@@ -92,6 +92,26 @@ pub enum ParseError {
     #[error("예상치 못한 형식: {0}")]
     UnexpectedFormat(String),
 
+    // ── 객체 스트림 전용 (Task #6) ────────────────────────────────────────────
+    /// `/Type /ObjStm` 딕셔너리가 손상됨 (필수 키 누락 또는 잘못된 값).
+    #[error("객체 스트림 구조 오류 (오프셋 {offset}): {reason}")]
+    MalformedObjStm { offset: u64, reason: String },
+
+    /// `/Extends` 키가 발견됨 — 상속 ObjStm은 v0.1 범위 외.
+    #[error("객체 스트림 /Extends 미지원 (오프셋 {offset})")]
+    ObjStmExtendsUnsupported { offset: u64 },
+
+    /// `/Filter`가 FlateDecode 외 필터를 지정함.
+    #[error("지원하지 않는 ObjStm 필터 (오프셋 {offset}): {filter:?}")]
+    InvalidObjStmFilter { offset: u64, filter: String },
+
+    /// 헤더의 `obj_num`이 XrefTable의 키와 불일치.
+    ///
+    /// **현재 정책**: 발생시키지 않음 — xref 우선 + `tracing::warn` 로그.
+    /// 향후 strict 모드 옵션 도입 시 활용 예약.
+    #[error("객체 스트림 헤더 번호 불일치: 헤더={header_num}, xref={xref_num}")]
+    ObjStmObjNumMismatch { header_num: u32, xref_num: u32 },
+
     // ── xref 스트림 전용 (Task #5) ────────────────────────────────────────────
     /// xref 스트림 간접 객체가 스트림이 아니거나 딕셔너리 구조가 손상됨.
     /// 발생: parse_xref_stream_dict — /Type /XRef 불일치, stream 키워드 없음 등.

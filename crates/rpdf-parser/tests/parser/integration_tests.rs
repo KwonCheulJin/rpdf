@@ -1,7 +1,7 @@
 use rpdf_core::types::{ObjectId, PdfObject, XrefEntry};
 use rpdf_parser::{
-    ParseError, find_eof, parse_header, parse_indirect_object, parse_startxref, parse_trailer,
-    parse_xref,
+    ParseError, find_eof, parse_header, parse_indirect_object, parse_object_stream,
+    parse_startxref, parse_trailer, parse_xref,
 };
 
 // ─── IT-1: 표준 PDF 1.4 — 4개 함수 전체 연동 + Catalog 파싱 ────────────────
@@ -456,5 +456,196 @@ fn it8_hybrid_chain_traditional_then_stream() {
             number: 1,
             generation: 0
         }
+    );
+}
+
+// ─── IT-9: 합성 ObjStm PDF — Compressed 엔트리 해소 + PdfObject 검증 ──────────
+
+/// FlateDecode 압축 ObjStm이 포함된 합성 PDF를 생성한다.
+///
+/// 구조:
+/// - obj 1 (Catalog, InUse)
+/// - obj 2 (Pages, InUse)
+/// - obj 10 (ObjStm, InUse): Page1(obj3)·Page2(obj4) 두 객체 포함, FlateDecode
+/// - xref stream (obj 5): /Index [0 5 10 1]
+///   - obj 0: Free
+///   - obj 1,2: InUse
+///   - obj 3,4: Compressed → ObjStm 10, index 0/1
+///   - obj 10: InUse (ObjStm 자체)
+fn make_pdf_with_objstm() -> Vec<u8> {
+    use flate2::Compression;
+    use flate2::write::ZlibEncoder;
+    use std::io::Write;
+
+    let mut buf: Vec<u8> = Vec::new();
+    buf.extend_from_slice(b"%PDF-1.5\n");
+
+    // obj 1: Catalog
+    let obj1_offset = buf.len() as u64;
+    buf.extend_from_slice(b"1 0 obj\n<</Type /Catalog /Pages 2 0 R>>\nendobj\n");
+
+    // obj 2: Pages
+    let obj2_offset = buf.len() as u64;
+    buf.extend_from_slice(b"2 0 obj\n<</Type /Pages /Kids [3 0 R 4 0 R] /Count 2>>\nendobj\n");
+
+    // ObjStm 본문 (비압축): "3 0 4 B2_len\n<Page1><Page2>"
+    let page1_bytes = b"<</Type /Page /Parent 2 0 R>>";
+    let page2_bytes = b"<</Type /Page /Parent 2 0 R /MediaBox [0 0 612 792]>>";
+    let hdr_offset1: usize = 0;
+    let hdr_offset2: usize = page1_bytes.len();
+    let header_str = format!("3 {} 4 {}\n", hdr_offset1, hdr_offset2);
+    let first = header_str.len();
+    let mut plain_body: Vec<u8> = header_str.into_bytes();
+    plain_body.extend_from_slice(page1_bytes);
+    plain_body.extend_from_slice(page2_bytes);
+
+    // FlateDecode 압축
+    let mut enc = ZlibEncoder::new(Vec::new(), Compression::default());
+    enc.write_all(&plain_body).unwrap();
+    let compressed = enc.finish().unwrap();
+
+    // obj 10: ObjStm
+    let obj10_offset = buf.len() as u64;
+    let objstm_header = format!(
+        "10 0 obj\n<</Type /ObjStm /N 2 /First {} /Filter /FlateDecode /Length {}>>\nstream\n",
+        first,
+        compressed.len()
+    );
+    buf.extend_from_slice(objstm_header.as_bytes());
+    buf.extend_from_slice(&compressed);
+    buf.extend_from_slice(b"\nendstream\nendobj\n");
+
+    // xref stream (obj 5): W=[1,4,2], /Index [0 5 10 1]
+    // row_size = 1+4+2 = 7 bytes
+    // entries: obj0(Free), obj1(InUse), obj2(InUse), obj3(Compressed), obj4(Compressed)
+    //          obj10(InUse)
+    let xref_offset = buf.len() as u64;
+
+    let mut stream_body: Vec<u8> = Vec::new();
+    let mut push_row = |t: u8, b1: u32, b2: u16| {
+        stream_body.push(t);
+        stream_body.extend_from_slice(&b1.to_be_bytes());
+        stream_body.extend_from_slice(&b2.to_be_bytes());
+    };
+    push_row(0, 0, 65535); // obj 0: Free
+    push_row(1, obj1_offset as u32, 0); // obj 1: InUse
+    push_row(1, obj2_offset as u32, 0); // obj 2: InUse
+    push_row(2, 10, 0); // obj 3: Compressed → ObjStm 10, index 0
+    push_row(2, 10, 1); // obj 4: Compressed → ObjStm 10, index 1
+    push_row(1, obj10_offset as u32, 0); // obj 10: InUse
+
+    let xref_dict = format!(
+        "5 0 obj\n<</Type /XRef /Size 11 /Root 1 0 R /W [1 4 2] /Index [0 5 10 1] /Length {}>>\nstream\n",
+        stream_body.len()
+    );
+    buf.extend_from_slice(xref_dict.as_bytes());
+    buf.extend_from_slice(&stream_body);
+    buf.extend_from_slice(b"\nendstream\nendobj\n");
+    buf.extend_from_slice(format!("startxref\n{xref_offset}\n%%EOF\n").as_bytes());
+
+    buf
+}
+
+#[test]
+fn it9_objstm_compressed_entry_resolved_via_parse_object_stream() {
+    let data = make_pdf_with_objstm();
+
+    // (a) parse_xref 성공
+    let eof = find_eof(&data).unwrap();
+    let xref_offset = parse_startxref(&data, eof).unwrap();
+    let parsed = parse_xref(&data, xref_offset).unwrap();
+
+    // (b) obj 3, obj 4가 Compressed 엔트리인지 확인
+    let entry3 = parsed.table.get(3).expect("obj 3 in xref");
+    let entry4 = parsed.table.get(4).expect("obj 4 in xref");
+
+    let (obj_stm_num3, idx3) = match entry3 {
+        XrefEntry::Compressed { obj_stm_num, index } => (*obj_stm_num, *index),
+        other => panic!("obj 3은 Compressed여야 함: {other:?}"),
+    };
+    let (obj_stm_num4, idx4) = match entry4 {
+        XrefEntry::Compressed { obj_stm_num, index } => (*obj_stm_num, *index),
+        other => panic!("obj 4는 Compressed여야 함: {other:?}"),
+    };
+
+    assert_eq!(obj_stm_num3, 10, "obj 3의 ObjStm은 obj 10이어야 함");
+    assert_eq!(obj_stm_num4, 10, "obj 4의 ObjStm은 obj 10이어야 함");
+    assert_eq!(idx3, 0, "obj 3의 index는 0이어야 함");
+    assert_eq!(idx4, 1, "obj 4의 index는 1이어야 함");
+
+    // (c) ObjStm의 파일 오프셋 조회 (xref에서 obj 10 InUse 엔트리)
+    let objstm_entry = parsed.table.get(10).expect("obj 10 (ObjStm) in xref");
+    let objstm_file_offset = match objstm_entry {
+        XrefEntry::InUse { offset, .. } => *offset,
+        other => panic!("ObjStm obj 10은 InUse여야 함: {other:?}"),
+    };
+
+    // (d) parse_object_stream 호출
+    let objstm = parse_object_stream(&data, objstm_file_offset).unwrap();
+
+    // (e) get(3) → Some(Dictionary)
+    let page1 = objstm.get(3).expect("ObjStm에 obj 3이 없음");
+    assert!(
+        matches!(page1, PdfObject::Dictionary(_)),
+        "obj 3은 Dictionary여야 함: {page1:?}"
+    );
+
+    // (f) /Type /Page 검증
+    let dict1 = page1.as_dict().unwrap();
+    let type_val = dict1.get(b"Type").expect("/Type 키 누락");
+    assert!(
+        matches!(type_val, PdfObject::Name(n) if n == b"Page"),
+        "obj 3의 /Type이 /Page가 아님: {type_val:?}"
+    );
+
+    // obj 4도 동일하게 검증
+    let page2 = objstm.get(4).expect("ObjStm에 obj 4가 없음");
+    let dict2 = page2.as_dict().unwrap();
+    let type_val2 = dict2.get(b"Type").expect("/Type 키 누락");
+    assert!(
+        matches!(type_val2, PdfObject::Name(n) if n == b"Page"),
+        "obj 4의 /Type이 /Page가 아님: {type_val2:?}"
+    );
+}
+
+// ─── IT-10: 실제 PDF (fw4-2024.pdf) — Compressed 엔트리 해소 검증 ─────────────
+
+#[test]
+fn it10_real_pdf_compressed_entry_resolved_via_parse_object_stream() {
+    // fw4-2024.pdf: obj 83 → ObjStm 7, index 0
+    let data = include_bytes!("../../../../examples/fw4-2024.pdf");
+
+    let eof = find_eof(data).unwrap();
+    let xref_offset = parse_startxref(data, eof).unwrap();
+    let parsed = parse_xref(data, xref_offset).unwrap();
+
+    // obj 83이 Compressed 엔트리인지 확인 (D-1 스캔에서 확인됨)
+    let entry83 = parsed.table.get(83).expect("obj 83 in xref");
+    let (obj_stm_num, idx) = match entry83 {
+        XrefEntry::Compressed { obj_stm_num, index } => (*obj_stm_num, *index),
+        other => panic!("obj 83은 Compressed여야 함: {other:?}"),
+    };
+    assert_eq!(obj_stm_num, 7, "obj 83의 ObjStm은 obj 7이어야 함");
+    assert_eq!(idx, 0, "obj 83의 index는 0이어야 함");
+
+    // ObjStm(obj 7)의 파일 오프셋 조회
+    let objstm_entry = parsed.table.get(7).expect("ObjStm obj 7 in xref");
+    let objstm_offset = match objstm_entry {
+        XrefEntry::InUse { offset, .. } => *offset,
+        other => panic!("ObjStm obj 7은 InUse여야 함: {other:?}"),
+    };
+
+    // parse_object_stream 호출
+    let objstm = parse_object_stream(data, objstm_offset).unwrap();
+
+    // obj 83 조회 성공
+    let obj83 = objstm.get(83).expect("ObjStm에 obj 83이 없음");
+    // 딕셔너리 형식이어야 함 (일반적인 PDF 구조 객체)
+    assert!(
+        matches!(
+            obj83,
+            PdfObject::Dictionary(_) | PdfObject::Array(_) | PdfObject::Integer(_)
+        ),
+        "obj 83이 예상 타입이 아님: {obj83:?}"
     );
 }

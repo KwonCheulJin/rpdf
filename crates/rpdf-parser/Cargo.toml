@@ -13,4 +13,5 @@ thiserror.workspace = true
 flate2.workspace = true
 
 [dev-dependencies]
+flate2.workspace = true
 proptest.workspace = true
