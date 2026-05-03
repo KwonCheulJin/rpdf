@@ -283,7 +283,7 @@ fn chain_no_prev_is_single_section() {
 fn chain_two_sections_prev_traversal() {
     // [섹션0: obj1=InUse] → [섹션1: obj2=InUse]
     // 섹션0의 /Prev = 섹션1의 오프셋
-    let mut section1 = make_xref_section(2, &[(200, 0, 'n')], "<< /Size 3 /Root 1 0 R >>");
+    let section1 = make_xref_section(2, &[(200, 0, 'n')], "<< /Size 3 /Root 1 0 R >>");
     let s1_offset = section1.len() as u64; // 섹션1이 데이터 끝에 위치
     // 실제로는 섹션0을 먼저 append하고 섹션1을 그 뒤에 붙임
     let section0 = make_xref_section(

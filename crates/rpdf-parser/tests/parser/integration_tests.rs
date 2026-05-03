@@ -1,5 +1,5 @@
 use rpdf_core::types::ObjectId;
-use rpdf_parser::{ParseError, find_eof, parse_header, parse_startxref, parse_trailer};
+use rpdf_parser::{ParseError, find_eof, parse_header, parse_startxref, parse_trailer, parse_xref};
 
 // ─── IT-1: 표준 PDF 1.4 — 4개 함수 전체 연동 ───────────────────────────────
 
@@ -32,6 +32,14 @@ fn it1_standard_pdf_all_four_functions() {
     assert_eq!(parsed.trailer.prev, None);
     assert_eq!(parsed.xref_offset, xref_offset);
     assert_eq!(parsed.xref_offset, 996213);
+
+    let parsed_xref = parse_xref(data, xref_offset).unwrap();
+    assert!(!parsed_xref.table.is_empty(), "xref 항목이 비어있음");
+    let root_num = parsed_xref.trailer.root.number;
+    assert!(
+        parsed_xref.table.get(root_num).is_some(),
+        "/Root 객체 {root_num}이 xref에 없음"
+    );
 }
 
 // ─── IT-2: 헤더 오프셋 != 0 ──────────────────────────────────────────────────
@@ -47,6 +55,12 @@ fn it2_header_at_nonzero_offset() {
     assert_eq!(header.byte_offset, 512);
     assert_eq!(header.version.major(), 1);
     assert_eq!(header.version.minor(), 4);
+
+    // startxref = 0 이면 parse_xref가 오프셋 0에서 xref 키워드를 찾지 못한다.
+    assert!(matches!(
+        parse_xref(&data, 0).unwrap_err(),
+        ParseError::InvalidXrefAtOffset { offset: 0, .. }
+    ));
 }
 
 // ─── IT-3: 점진적 업데이트 — 마지막 trailer 사용 ─────────────────────────────
@@ -78,6 +92,20 @@ fn it3_incremental_update_uses_last_trailer() {
     );
     assert_eq!(parsed.trailer.prev, Some(84248));
     assert_eq!(parsed.xref_offset, 89371);
+
+    // /Prev chain 순회: 두 xref 섹션을 모두 읽어 병합한다.
+    let parsed_xref = parse_xref(data, parsed.xref_offset).unwrap();
+    assert!(!parsed_xref.table.is_empty(), "xref 항목이 비어있음");
+    assert!(
+        parsed_xref.sections.len() >= 2,
+        "/Prev chain이 있으므로 섹션이 2개 이상이어야 함: got {}",
+        parsed_xref.sections.len()
+    );
+    let root_num = parsed_xref.trailer.root.number;
+    assert!(
+        parsed_xref.table.get(root_num).is_some(),
+        "/Root 객체 {root_num}이 xref에 없음"
+    );
 }
 
 // ─── IT-4: 파일 잘림 — MissingEof 반환 ──────────────────────────────────────
@@ -114,19 +142,39 @@ fn it5_info_object_id_extracted() {
             generation: 0
         })
     );
+
+    let xref_offset = parse_startxref(data, eof_offset).unwrap();
+    let parsed_xref = parse_xref(data, xref_offset).unwrap();
+    let info_num = parsed_xref.trailer.info.unwrap().number;
+    assert!(
+        parsed_xref.table.get(info_num).is_some(),
+        "/Info 객체 {info_num}이 xref에 없음"
+    );
 }
 
-// ─── IT-6: xref 스트림 PDF — XrefStreamUnsupported 반환 ──────────────────────
+// ─── IT-6: xref 스트림 PDF — parse_trailer·parse_xref 양쪽 모두 XrefStreamUnsupported ──
 
 #[test]
 fn it6_xref_stream_returns_unsupported_error() {
     // fw4-2024.pdf (PDF 1.7) 은 xref stream 방식을 사용한다.
-    // trailer 키워드가 없으므로 XrefStreamUnsupported 에러를 반환해야 한다.
+    // parse_trailer(역방향)와 parse_xref(순방향) 두 경로 모두 동일 에러를 반환해야 한다.
     let data = include_bytes!("../../../../examples/fw4-2024.pdf");
 
     let eof_offset = find_eof(data).unwrap();
-    assert!(matches!(
-        parse_trailer(data, eof_offset).unwrap_err(),
-        ParseError::XrefStreamUnsupported { xref_offset: _ }
-    ));
+    let xref_offset = parse_startxref(data, eof_offset).unwrap();
+
+    assert!(
+        matches!(
+            parse_trailer(data, eof_offset).unwrap_err(),
+            ParseError::XrefStreamUnsupported { xref_offset: _ }
+        ),
+        "parse_trailer가 XrefStreamUnsupported를 반환해야 함"
+    );
+    assert!(
+        matches!(
+            parse_xref(data, xref_offset).unwrap_err(),
+            ParseError::XrefStreamUnsupported { xref_offset: _ }
+        ),
+        "parse_xref가 XrefStreamUnsupported를 반환해야 함"
+    );
 }
