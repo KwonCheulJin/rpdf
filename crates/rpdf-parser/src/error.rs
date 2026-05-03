@@ -37,8 +37,11 @@ pub enum ParseError {
     #[error("잘못된 간접 참조: {found:?}")]
     InvalidObjectRef { found: String },
 
-    /// xref 스트림 형식(PDF 1.5+) 감지됨. Task #5에서 처리 예정.
-    #[error("xref 스트림 형식은 지원되지 않음 (오프셋 {xref_offset}): Task #5에서 처리 예정")]
+    /// xref 스트림 형식(PDF 1.5+) 감지 시 trailer 파싱 경로에서 반환.
+    ///
+    /// Task #5 이후 `parse_xref_chain`은 xref 스트림을 직접 처리하므로
+    /// 이 변형은 `parse_trailer`(역방향 탐색 경로)에서만 발생한다.
+    #[error("xref 스트림 형식 감지 (오프셋 {xref_offset}): trailer 역방향 파싱 경로")]
     XrefStreamUnsupported { xref_offset: u64 },
 
     /// xref 항목의 20바이트 형식이 올바르지 않음.

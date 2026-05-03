@@ -4,7 +4,10 @@ use rpdf_core::types::{XrefEntry, XrefTable};
 
 use crate::error::ParseError;
 use crate::objects::{parse_dictionary, parse_u64_val, peek_str, skip_whitespace};
-use crate::trailer::{PdfTrailer, extract_trailer_fields, is_xref_stream};
+use crate::trailer::{
+    PdfTrailer, extract_trailer_fields, is_xref_stream as is_xref_stream_heuristic,
+};
+use crate::xref_stream::{is_xref_stream, parse_xref_stream};
 
 /// `parse_xref` 반환값: 병합된 xref 테이블, 권위 있는 trailer, 섹션 메타데이터.
 #[derive(Debug, Clone)]
@@ -64,6 +67,11 @@ pub fn parse_xref(data: &[u8], xref_offset: u64) -> Result<ParsedXref, ParseErro
 }
 
 /// `/Prev` chain 전체를 순회하며 xref 테이블을 병합한다.
+///
+/// Hybrid Chain: 각 섹션이 전통 xref 테이블이면 `parse_xref_section`,
+/// xref 스트림(PDF 1.5+)이면 `parse_xref_stream`으로 처리한다.
+/// 두 형식은 하나의 chain에 혼재할 수 있다 (ISO 32000 §7.5.8).
+/// visited / depth 검사는 스트림 / 전통 구분 없이 동일하게 적용된다.
 fn parse_xref_chain(data: &[u8], start_offset: u64) -> Result<ParsedXref, ParseError> {
     let mut table = XrefTable::new();
     let mut sections: Vec<XrefSectionInfo> = Vec::new();
@@ -91,7 +99,12 @@ fn parse_xref_chain(data: &[u8], start_offset: u64) -> Result<ParsedXref, ParseE
         visited.insert(current);
         depth += 1;
 
-        let result = parse_xref_section(data, current)?;
+        // 파싱 기반 is_xref_stream으로 전통/스트림 분기
+        let result = if is_xref_stream(data, current) {
+            parse_xref_stream(data, current)?
+        } else {
+            parse_xref_section(data, current)?
+        };
         sections.push(result.section_info);
 
         for (obj_num, entry) in result.entries {
@@ -129,8 +142,8 @@ fn parse_xref_section(data: &[u8], offset: u64) -> Result<XrefSectionResult, Par
 
     let start = offset as usize;
 
-    // xref 스트림 감지 (obj 패턴)
-    if is_xref_stream(data, offset) {
+    // xref 스트림 감지 (방어적 체크 — chain에서 먼저 분기하므로 실제 도달하지 않아야 함)
+    if is_xref_stream_heuristic(data, offset) {
         return Err(ParseError::XrefStreamUnsupported {
             xref_offset: offset,
         });
