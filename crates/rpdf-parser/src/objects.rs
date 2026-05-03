@@ -799,7 +799,7 @@ pub(crate) fn parse_object_with_depth(
 /// # 반환
 ///
 /// `Ok((object, consumed))` — `consumed`는 `offset`부터 소비된 총 바이트 수
-/// (선행 화이트스페이스 포함).
+/// (선행 화이트스페이스 포함). **절대 위치가 필요하면 `offset + consumed`로 계산.**
 ///
 /// # 에러
 ///
