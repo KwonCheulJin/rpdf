@@ -65,16 +65,20 @@ fn parse_xref_chain(data: &[u8], start_offset: u64) -> Result<ParsedXref, ParseE
     let mut current = start_offset;
 
     loop {
-        // 깊이 검사는 방문 집합 검사보다 먼저 수행한다:
-        // 비순환 비정상 chain(모든 오프셋이 다르지만 100개 초과)에서 TooDeep을 발생시킨다.
-        // 순환 chain은 visited 검사가 잡으므로 TooDeep에 도달하지 못한다.
+        // visited 검사가 depth 검사보다 반드시 먼저 수행된다.
+        // 이 순서는 계획서의 보장 조건을 지킨다:
+        //   "순환 chain은 항상 XrefChainCycle로 보고된다."
+        // depth를 먼저 검사하면 정확히 100개 고유 오프셋의 순환에서
+        // XrefChainCycle 대신 XrefChainTooDeep이 반환되는 명세 위반이 발생한다.
+        // (참고: mydocs/troubleshootings/xref-chain-check-order.md)
+        if visited.contains(&current) {
+            return Err(ParseError::XrefChainCycle { offset: current });
+        }
+        // 비순환 비정상 chain(100개 초과 고유 오프셋)에서만 TooDeep이 발생한다.
         if depth >= MAX_XREF_CHAIN_DEPTH {
             return Err(ParseError::XrefChainTooDeep {
                 max_depth: MAX_XREF_CHAIN_DEPTH,
             });
-        }
-        if visited.contains(&current) {
-            return Err(ParseError::XrefChainCycle { offset: current });
         }
         visited.insert(current);
         depth += 1;
@@ -424,243 +428,21 @@ fn parse_xref_entry(entry: &[u8], file_offset: u64) -> Result<XrefEntry, ParseEr
 
 /// `data[pos]`부터 줄바꿈을 소비하고 소비한 바이트 수를 반환한다.
 ///
-/// `\r\n` → 2, `\n` → 1, 줄바꿈 없음 → None
+/// `\r\n` → 2, `\n` → 1, 그 외 → None
+///
+/// `\r` 단독은 거부한다. 항목 EOL 정책과 일관성을 위해 엄격하게 처리한다.
+/// (`\r\n` 또는 `\n`만 허용 — 계획서 EOL 정책과 동일)
+/// 향후 관용 처리가 필요한 실 파일이 발견되면 별도 Issue로 등록 후 도입 검토한다.
 fn consume_newline(data: &[u8], pos: usize) -> Option<usize> {
     if pos >= data.len() {
         return None;
     }
     match data[pos] {
+        b'\r' if pos + 1 < data.len() && data[pos + 1] == b'\n' => Some(2),
         b'\n' => Some(1),
-        b'\r' => {
-            if pos + 1 < data.len() && data[pos + 1] == b'\n' {
-                Some(2)
-            } else {
-                Some(1)
-            }
-        }
         _ => None,
     }
 }
 
-// ─── 내부 모듈 재노출 ────────────────────────────────────────────────────────
 // parse_trailer_at 은 xref.rs 전용 private fn 이므로 재노출하지 않는다.
-
-// ─── 단위 테스트 (파일 내부) ────────────────────────────────────────────────
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::error::ParseError;
-
-    // ── 합성 데이터 헬퍼 ────────────────────────────────────────────────────
-
-    /// (offset_or_next, generation, kind) → 정확히 20바이트 xref 항목
-    fn make_entry(offset_or_next: u64, generation: u16, kind: char) -> Vec<u8> {
-        format!("{offset_or_next:010} {generation:05} {kind}\r\n").into_bytes()
-    }
-
-    /// 완전한 xref 섹션 바이트 생성 (단일 서브섹션)
-    fn make_xref_section(
-        start_obj: u32,
-        entries: &[(u64, u16, char)],
-        trailer_dict: &str,
-    ) -> Vec<u8> {
-        let mut buf = Vec::new();
-        buf.extend_from_slice(b"xref\n");
-        buf.extend_from_slice(format!("{} {}\n", start_obj, entries.len()).as_bytes());
-        for &(off, genr, k) in entries {
-            buf.extend_from_slice(&make_entry(off, genr, k));
-        }
-        buf.extend_from_slice(b"trailer\n");
-        buf.extend_from_slice(trailer_dict.as_bytes());
-        buf
-    }
-
-    // ── 기본 파싱 테스트 ─────────────────────────────────────────────────────
-
-    #[test]
-    fn parse_single_inuse_entry() {
-        let section = make_xref_section(
-            0,
-            &[(0, 65535, 'f'), (9, 0, 'n')],
-            "<< /Size 2 /Root 1 0 R >>",
-        );
-        let result = parse_xref(&section, 0).unwrap();
-        assert_eq!(result.table.len(), 2);
-        assert!(matches!(
-            result.table.get(1),
-            Some(XrefEntry::InUse {
-                offset: 9,
-                generation: 0
-            })
-        ));
-        assert!(matches!(
-            result.table.get(0),
-            Some(XrefEntry::Free {
-                next_free_obj_num: 0,
-                generation: 65535
-            })
-        ));
-    }
-
-    #[test]
-    fn parse_multiple_entries() {
-        let entries = [
-            (0u64, 65535u16, 'f'),
-            (9, 0, 'n'),
-            (58, 0, 'n'),
-            (200, 0, 'n'),
-        ];
-        let section = make_xref_section(0, &entries, "<< /Size 4 /Root 1 0 R >>");
-        let result = parse_xref(&section, 0).unwrap();
-        assert_eq!(result.table.len(), 4);
-        assert_eq!(result.sections.len(), 1);
-        assert_eq!(result.sections[0].entry_count, 4);
-    }
-
-    #[test]
-    fn parse_free_and_inuse_mixed() {
-        let section = make_xref_section(
-            0,
-            &[(5, 1, 'f'), (100, 0, 'n'), (0, 65535, 'f')],
-            "<< /Size 3 /Root 2 0 R >>",
-        );
-        let result = parse_xref(&section, 0).unwrap();
-        assert!(matches!(result.table.get(0), Some(XrefEntry::Free { .. })));
-        assert!(matches!(result.table.get(1), Some(XrefEntry::InUse { .. })));
-        assert!(matches!(result.table.get(2), Some(XrefEntry::Free { .. })));
-    }
-
-    #[test]
-    fn parse_trailer_fields_extracted() {
-        let section = make_xref_section(
-            0,
-            &[(0, 65535, 'f'), (9, 0, 'n')],
-            "<< /Size 2 /Root 1 0 R /Info 2 0 R >>",
-        );
-        let result = parse_xref(&section, 0).unwrap();
-        assert_eq!(result.trailer.size, 2);
-        assert_eq!(result.trailer.root.number, 1);
-        assert_eq!(result.trailer.info.map(|o| o.number), Some(2));
-        assert_eq!(result.trailer.prev, None);
-    }
-
-    #[test]
-    fn parse_empty_subsection_ok() {
-        // "0 0" 서브섹션: 항목 없음, 에러가 아님
-        let mut buf = Vec::new();
-        buf.extend_from_slice(b"xref\n0 0\ntrailer\n<< /Size 0 /Root 1 0 R >>");
-        let result = parse_xref(&buf, 0).unwrap();
-        assert_eq!(result.table.len(), 0);
-    }
-
-    #[test]
-    fn parse_crlf_subsection_header() {
-        // 섹션 헤더에 \r\n 허용
-        let mut buf = Vec::new();
-        buf.extend_from_slice(b"xref\r\n0 1\r\n");
-        buf.extend_from_slice(&make_entry(9, 0, 'n'));
-        buf.extend_from_slice(b"trailer\n<< /Size 1 /Root 1 0 R >>");
-        let result = parse_xref(&buf, 0).unwrap();
-        assert_eq!(result.table.len(), 1);
-    }
-
-    #[test]
-    fn parse_space_newline_eol_entry() {
-        // 항목 EOL: ' '\n 허용
-        let mut entry = format!("{:010} {:05} {}", 9u64, 0u16, 'n').into_bytes();
-        entry.extend_from_slice(b" \n");
-        let mut buf = Vec::new();
-        buf.extend_from_slice(b"xref\n0 1\n");
-        buf.extend_from_slice(&entry);
-        buf.extend_from_slice(b"trailer\n<< /Size 1 /Root 1 0 R >>");
-        let result = parse_xref(&buf, 0).unwrap();
-        assert_eq!(result.table.len(), 1);
-    }
-
-    #[test]
-    fn parse_nonzero_start_obj_num() {
-        // 객체 번호가 0부터 시작하지 않는 서브섹션
-        let section = make_xref_section(
-            5,
-            &[(500, 0, 'n'), (600, 0, 'n')],
-            "<< /Size 7 /Root 5 0 R >>",
-        );
-        let result = parse_xref(&section, 0).unwrap();
-        assert!(result.table.get(5).is_some());
-        assert!(result.table.get(6).is_some());
-        assert!(result.table.get(0).is_none());
-    }
-
-    // ── 에러 케이스 테스트 ───────────────────────────────────────────────────
-
-    #[test]
-    fn reject_offset_out_of_bounds() {
-        let data = b"short";
-        let err = parse_xref(data, 100).unwrap_err();
-        assert!(
-            matches!(
-                err,
-                ParseError::XrefOffsetOutOfBounds {
-                    offset: 100,
-                    file_size: 5
-                }
-            ),
-            "unexpected: {err:?}"
-        );
-    }
-
-    #[test]
-    fn reject_invalid_xref_at_offset_zero_pdf_header() {
-        // startxref = 0 → 오프셋 0에 %PDF- 헤더 → InvalidXrefAtOffset
-        let data = b"%PDF-1.4\nsome content\nstartxref\n0\n%%EOF\n";
-        let err = parse_xref(data, 0).unwrap_err();
-        assert!(
-            matches!(err, ParseError::InvalidXrefAtOffset { offset: 0, .. }),
-            "unexpected: {err:?}"
-        );
-    }
-
-    #[test]
-    fn reject_malformed_entry_non_standard_eol() {
-        // \n 단독 EOL은 비표준
-        let mut entry = format!("{:010} {:05} {}", 9u64, 0u16, 'n').into_bytes();
-        entry.push(b'\n'); // \n 단독 (19바이트 효과)
-        entry.push(b'\n'); // 20바이트 맞추기
-        let mut buf = Vec::new();
-        buf.extend_from_slice(b"xref\n0 1\n");
-        buf.extend_from_slice(&entry);
-        buf.extend_from_slice(b"trailer\n<< /Size 1 /Root 1 0 R >>");
-        let err = parse_xref(&buf, 0).unwrap_err();
-        assert!(
-            matches!(err, ParseError::MalformedXref { .. }),
-            "unexpected: {err:?}"
-        );
-    }
-
-    #[test]
-    fn reject_malformed_entry_unknown_type() {
-        // 항목 종류 'x' (n 또는 f 이외)
-        let entry = format!("{:010} {:05} x\r\n", 9u64, 0u16).into_bytes();
-        assert_eq!(entry.len(), 20);
-        let mut buf = Vec::new();
-        buf.extend_from_slice(b"xref\n0 1\n");
-        buf.extend_from_slice(&entry);
-        buf.extend_from_slice(b"trailer\n<< /Size 1 /Root 1 0 R >>");
-        let err = parse_xref(&buf, 0).unwrap_err();
-        assert!(
-            matches!(err, ParseError::MalformedXref { .. }),
-            "unexpected: {err:?}"
-        );
-    }
-
-    #[test]
-    fn reject_offset_equal_to_file_size() {
-        let data = b"xref\n";
-        let err = parse_xref(data, data.len() as u64).unwrap_err();
-        assert!(
-            matches!(err, ParseError::XrefOffsetOutOfBounds { .. }),
-            "unexpected: {err:?}"
-        );
-    }
-}
+// 테스트는 tests/parser/xref_tests.rs 에 있다.
