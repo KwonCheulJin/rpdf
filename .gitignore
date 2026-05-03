@@ -256,5 +256,5 @@ $RECYCLE.BIN/
 pkg/
 src-tauri/target/
 *.pdf.bak
-examples/*.pdf
-samples/*.pdf
+# examples/ 와 samples/ 의 테스트 PDF는 커밋 대상
+# 단, 1MB 초과 파일은 커밋하지 않는다

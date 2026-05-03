@@ -115,6 +115,20 @@ pnpm init
 
 생성된 `package.json`의 `name`, `private: true`, `scripts`, `workspaces` 항목만 수정한다.
 
+#### GitHub Actions CI에서 pnpm 설정
+```yaml
+- uses: pnpm/action-setup@v4   # version: 키 없음 — packageManager 필드 자동 인식
+- uses: actions/setup-node@v4
+  with:
+    node-version: 22
+    cache: pnpm
+```
+
+`pnpm/action-setup@v4`는 `package.json`의 `packageManager` 필드를 자동으로 읽는다.
+`version:` 키를 함께 지정하면 **ERR_PNPM_BAD_PM_VERSION** 충돌로 CI가 실패한다.
+→ `packageManager` 필드를 단일 소스로 유지하고, CI에서 `version:` 키를 제거한다.
+→ 참고: `mydocs/troubleshootings/pnpm-action-setup-version-conflict.md`
+
 #### Tauri 앱 (v0.5에서 사용)
 ```bash
 cd packages
@@ -259,6 +273,8 @@ Claude Code가 다음과 같은 작업을 할 때는 이 원칙을 따른다.
    - 새/변경되는 API
    - 엣지 케이스
    - 테스트 전략
+   - ⚠️ 버전 숫자는 "최소 요구사항"이 아닌 **실제 설치된 버전** 기준으로 기재한다.
+     `cargo new`는 현재 Rust의 기본 edition을 사용하므로, 계획서가 이전 버전 기준이면 매번 수정이 발생한다.
 4. **계획 승인** — 사람이 읽고 승인
 5. **구현** — 계획서대로, 계획 외 변경 시 계획서부터 수정
 6. **테스트** — `cargo test`, `cargo clippy`, `pnpm test` 통과 필수
