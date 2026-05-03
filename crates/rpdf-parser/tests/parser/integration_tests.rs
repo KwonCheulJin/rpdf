@@ -1,7 +1,7 @@
-use rpdf_core::types::{ObjectId, PdfObject, XrefEntry};
+use rpdf_core::types::{ContentStreamOperator, ObjectId, PdfObject, XrefEntry};
 use rpdf_parser::{
-    ParseError, find_eof, parse_header, parse_indirect_object, parse_object_stream,
-    parse_startxref, parse_trailer, parse_xref,
+    ParseError, find_eof, parse_content_stream, parse_header, parse_indirect_object,
+    parse_object_stream, parse_startxref, parse_trailer, parse_xref,
 };
 
 // ─── IT-1: 표준 PDF 1.4 — 4개 함수 전체 연동 + Catalog 파싱 ────────────────
@@ -648,4 +648,206 @@ fn it10_real_pdf_compressed_entry_resolved_via_parse_object_stream() {
         ),
         "obj 83이 예상 타입이 아님: {obj83:?}"
     );
+}
+
+// ─── IT-11: 합성 content stream 통합 테스트 ──────────────────────────────────
+
+#[test]
+fn it11_synthetic_content_stream() {
+    // 텍스트 + 경로 + 색상 + q/Q + 인라인 이미지 포함 합성 스트림
+    let mut stream: Vec<u8> = Vec::new();
+    stream.extend_from_slice(
+        b"BT\n\
+        /F1 12 Tf\n\
+        72 720 Td\n\
+        (Hello PDF) Tj\n\
+        [(multi)10(glyph)] TJ\n\
+        ET\n\
+        q\n\
+        1 0 0 RG\n\
+        0.5 g\n\
+        100 200 m\n\
+        300 400 l\n\
+        h\n\
+        f*\n\
+        0 0 1 0 re\n\
+        S\n\
+        Q\n\
+        /BMCTag BMC\n\
+        EMC\n\
+        BX\n\
+        EX\n",
+    );
+    // 인라인 이미지 추가
+    stream.extend_from_slice(b"BI /W 4 /H 2 /CS /G /BPC 8\nID ");
+    stream.extend_from_slice(&[0xAAu8; 8]); // 4*2=8 raw bytes
+    stream.extend_from_slice(b"\nEI\n");
+
+    let ops = parse_content_stream(&stream).unwrap();
+
+    // 총 연산자 수 확인:
+    // BT Tf Td Tj TJ ET q RG g m l h f* re S Q BMC EMC BX EX InlineImage = 21개
+    assert_eq!(ops.len(), 21, "연산자 수 불일치: {ops:?}");
+
+    // 순서 + 분류 검증
+    assert_eq!(ops[0].operator, ContentStreamOperator::BeginText);
+    assert_eq!(ops[0].operands.len(), 0);
+
+    assert_eq!(ops[1].operator, ContentStreamOperator::SetFont);
+    assert_eq!(ops[1].operands.len(), 2); // /F1, 12
+
+    assert_eq!(ops[2].operator, ContentStreamOperator::MoveText);
+    assert_eq!(ops[2].operands.len(), 2); // 72, 720
+
+    assert_eq!(ops[3].operator, ContentStreamOperator::ShowText);
+    assert_eq!(ops[3].operands.len(), 1); // (Hello PDF)
+
+    assert_eq!(ops[4].operator, ContentStreamOperator::ShowTextAdjusted);
+    assert_eq!(ops[4].operands.len(), 1); // [...] array
+
+    assert_eq!(ops[5].operator, ContentStreamOperator::EndText);
+
+    assert_eq!(ops[6].operator, ContentStreamOperator::SaveState);
+    assert_eq!(ops[7].operator, ContentStreamOperator::SetStrokeRGB);
+    assert_eq!(ops[7].operands.len(), 3); // 1 0 0
+
+    assert_eq!(ops[8].operator, ContentStreamOperator::SetFillGray);
+    assert_eq!(ops[8].operands.len(), 1); // 0.5
+
+    assert_eq!(ops[9].operator, ContentStreamOperator::MoveTo);
+    assert_eq!(ops[10].operator, ContentStreamOperator::LineTo);
+    assert_eq!(ops[11].operator, ContentStreamOperator::ClosePath);
+    assert_eq!(ops[12].operator, ContentStreamOperator::FillEvenOdd);
+    assert_eq!(ops[13].operator, ContentStreamOperator::Rect);
+    assert_eq!(ops[13].operands.len(), 4); // 0 0 1 0
+    assert_eq!(ops[14].operator, ContentStreamOperator::Stroke);
+    assert_eq!(ops[15].operator, ContentStreamOperator::RestoreState);
+
+    assert_eq!(ops[16].operator, ContentStreamOperator::BeginMarkedContent);
+    assert_eq!(ops[16].operands.len(), 1); // /BMCTag
+
+    assert_eq!(ops[17].operator, ContentStreamOperator::EndMarkedContent);
+    assert_eq!(ops[18].operator, ContentStreamOperator::BeginCompatibility);
+    assert_eq!(ops[19].operator, ContentStreamOperator::EndCompatibility);
+
+    // 인라인 이미지
+    assert_eq!(ops[20].operator, ContentStreamOperator::InlineImage);
+    let img_data = ops[20].inline_data.as_ref().expect("inline_data 없음");
+    assert_eq!(img_data.len(), 8);
+    assert_eq!(img_data[0], 0xAA);
+    // dict: /W 4 /H 2 /CS /G /BPC 8 → 4쌍 = 8개 피연산자
+    assert_eq!(ops[20].operands.len(), 8);
+}
+
+// ─── IT-12: 실제 PDF (fw4-2024.pdf) content stream 통합 테스트 ───────────────
+
+/// D-2 사전 확인 결과: fw4-2024.pdf 1페이지 content stream에서
+/// parse_content_stream 적용 → 228개 연산자, 첫 연산자 BeginMarkedContentProp.
+#[test]
+fn it12_real_pdf_fw4_content_stream() {
+    let data = include_bytes!("../../../../examples/fw4-2024.pdf");
+
+    // xref 파싱
+    let eof_offset = find_eof(data).unwrap();
+    let xref_offset = parse_startxref(data, eof_offset).unwrap();
+    let parsed_xref = parse_xref(data, xref_offset).unwrap();
+
+    // Catalog → Pages → page[0] → /Contents
+    let root_num = parsed_xref.trailer.root.number;
+    let catalog = resolve_dict(data, &parsed_xref, root_num);
+    let pages_num = match catalog.get(b"Pages").unwrap() {
+        PdfObject::Reference(id) => id.number,
+        _ => panic!("/Pages Reference 아님"),
+    };
+    let pages_dict = resolve_dict(data, &parsed_xref, pages_num);
+    let kids = match pages_dict.get(b"Kids").unwrap() {
+        PdfObject::Array(arr) => arr.clone(),
+        _ => panic!("/Kids Array 아님"),
+    };
+    let page_num = match &kids[0] {
+        PdfObject::Reference(id) => id.number,
+        _ => panic!("kids[0] Reference 아님"),
+    };
+    let page_dict = resolve_dict(data, &parsed_xref, page_num);
+    let contents_num = match page_dict.get(b"Contents").unwrap() {
+        PdfObject::Reference(id) => id.number,
+        PdfObject::Array(arr) => match &arr[0] {
+            PdfObject::Reference(id) => id.number,
+            _ => panic!("contents array[0] Reference 아님"),
+        },
+        _ => panic!("/Contents 형식 미지원"),
+    };
+
+    // content stream 압축 해제
+    let contents_obj = resolve_object(data, &parsed_xref, contents_num);
+    let stream = match &contents_obj {
+        PdfObject::Stream(s) => s,
+        _ => panic!("contents가 Stream 아님"),
+    };
+    let stream_data = if matches!(stream.dict.get(b"Filter"), Some(PdfObject::Name(n)) if n == b"FlateDecode")
+    {
+        use flate2::read::ZlibDecoder;
+        use std::io::Read;
+        let mut dec = ZlibDecoder::new(stream.data.as_slice());
+        let mut out = Vec::new();
+        dec.read_to_end(&mut out).unwrap();
+        out
+    } else {
+        stream.data.clone()
+    };
+
+    // parse_content_stream 적용 — D-2 사전 확인 값과 일치 여부 검증
+    let ops = parse_content_stream(&stream_data).expect("parse_content_stream 실패");
+    assert_eq!(ops.len(), 228, "D-2 확인값: 228개");
+    assert_eq!(
+        ops[0].operator,
+        ContentStreamOperator::BeginMarkedContentProp,
+        "첫 연산자는 BeginMarkedContentProp"
+    );
+    assert_eq!(ops[0].operands.len(), 2, "BDC 피연산자 2개 (Tag, dict)");
+    assert_eq!(
+        ops[11].operator,
+        ContentStreamOperator::BeginText,
+        "ops[11]은 BeginText"
+    );
+    assert_eq!(
+        ops[17].operator,
+        ContentStreamOperator::ShowText,
+        "ops[17]은 ShowText"
+    );
+}
+
+// IT-12 헬퍼: parse_xref 반환값에서 객체를 resolve
+fn resolve_object(data: &[u8], parsed: &rpdf_parser::ParsedXref, obj_num: u32) -> PdfObject {
+    let entry = parsed
+        .table
+        .get(obj_num)
+        .unwrap_or_else(|| panic!("obj#{obj_num} 없음"));
+    match entry {
+        XrefEntry::InUse { offset, .. } => {
+            let (indirect, _) = parse_indirect_object(data, *offset as usize).unwrap();
+            indirect.object
+        }
+        XrefEntry::Free { .. } => panic!("obj#{obj_num} free"),
+        XrefEntry::Compressed { obj_stm_num, .. } => {
+            let stm_entry = parsed.table.get(*obj_stm_num).unwrap();
+            let stm_off = match stm_entry {
+                XrefEntry::InUse { offset, .. } => *offset,
+                _ => panic!("ObjStm InUse 아님"),
+            };
+            let stm = parse_object_stream(data, stm_off).unwrap();
+            stm.get(obj_num).cloned().unwrap()
+        }
+    }
+}
+
+fn resolve_dict(
+    data: &[u8],
+    parsed: &rpdf_parser::ParsedXref,
+    obj_num: u32,
+) -> rpdf_core::types::PdfDict {
+    match resolve_object(data, parsed, obj_num) {
+        PdfObject::Dictionary(d) => d,
+        other => panic!("obj#{obj_num} Dictionary 아님: {other:?}"),
+    }
 }
