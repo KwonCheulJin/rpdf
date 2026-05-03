@@ -279,7 +279,8 @@ Claude Code가 다음과 같은 작업을 할 때는 이 원칙을 따른다.
 5. **구현** — 계획서대로, 계획 외 변경 시 계획서부터 수정
 6. **테스트** — `cargo test`, `cargo clippy`, `pnpm test` 통과 필수
 7. **완료 보고서** — `mydocs/working/task{N}-done.md`
-8. **PR 및 merge** — `devel` 브랜치로 PR, `closes #{N}`
+8. **회고** — `/task-retro` 실행: 교훈을 CLAUDE.md·트러블슈팅 문서에 반영, 커밋
+9. **PR 및 merge** — `devel` 브랜치로 PR, `closes #{N}`
 
 ## 금지 사항
 
