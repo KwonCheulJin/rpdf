@@ -127,6 +127,6 @@ fn it6_xref_stream_returns_unsupported_error() {
     let eof_offset = find_eof(data).unwrap();
     assert!(matches!(
         parse_trailer(data, eof_offset).unwrap_err(),
-        ParseError::XrefStreamUnsupported
+        ParseError::XrefStreamUnsupported { xref_offset: _ }
     ));
 }

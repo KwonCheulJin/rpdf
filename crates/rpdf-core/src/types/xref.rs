@@ -1,0 +1,44 @@
+use std::collections::BTreeMap;
+
+/// xref 테이블 전체. 객체 번호를 키로, 엔트리를 값으로 갖는다.
+///
+/// `BTreeMap`을 사용해 객체 번호 순 정렬을 보장한다.
+/// incremental update chain 병합 시 `or_insert` 의미론을 적용한다:
+/// 최신(현재) 섹션의 엔트리가 이전 섹션의 엔트리보다 우선한다.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct XrefTable {
+    pub entries: BTreeMap<u32, XrefEntry>,
+}
+
+impl XrefTable {
+    pub fn new() -> Self {
+        Self {
+            entries: BTreeMap::new(),
+        }
+    }
+
+    /// 해당 객체 번호의 엔트리가 아직 없을 때만 삽입한다.
+    /// (최신 섹션이 먼저 삽입되므로, 이전 섹션 엔트리는 무시된다.)
+    pub fn insert_if_absent(&mut self, obj_num: u32, entry: XrefEntry) {
+        self.entries.entry(obj_num).or_insert(entry);
+    }
+}
+
+impl Default for XrefTable {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// 개별 xref 엔트리.
+///
+/// PDF 스펙(ISO 32000) §7.5.4 — Cross-Reference Table
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum XrefEntry {
+    /// 사용 중인 객체: 파일 내 바이트 오프셋과 generation 번호.
+    InUse { offset: u64, generation: u16 },
+    /// 삭제된(free) 객체: 다음 free 객체 번호와 generation 번호.
+    Free { next_free_obj_num: u32, generation: u16 },
+    /// 압축 객체 스트림 내 객체 (PDF 1.5+, Task #5에서 처리).
+    Compressed { obj_stm_num: u32, index: u32 },
+}

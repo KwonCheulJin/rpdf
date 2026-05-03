@@ -58,7 +58,7 @@ pub fn parse_trailer(data: &[u8], search_end: usize) -> Result<ParsedTrailer, Pa
         .rposition(|w| w == TRAILER_KEYWORD)
         .ok_or_else(|| {
             if is_xref_stream(data, xref_offset) {
-                ParseError::XrefStreamUnsupported
+                ParseError::XrefStreamUnsupported { xref_offset }
             } else {
                 ParseError::MissingTrailer
             }
