@@ -1,0 +1,17 @@
+{
+  "name": "rpdf",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Rust + WASM 기반 가벼운 PDF 편집기",
+  "scripts": {
+    "lint": "pnpm -r lint",
+    "test": "pnpm -r test",
+    "typecheck": "pnpm -r typecheck"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "typescript": "^5.4",
+    "prettier": "^3"
+  },
+  "packageManager": "pnpm@10.13.1"
+}
