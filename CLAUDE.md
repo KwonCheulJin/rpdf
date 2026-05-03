@@ -56,6 +56,7 @@ private/`pub(crate)` 함수 테스트 → 인라인 `#[cfg(test)] mod internal_t
 - 정책 일관성이 깨지지 않았는가 (같은 종류 처리가 두 곳에서 다르게 동작하지 않는가).
 - **조건 분기(`if let`, `if`, `match guard`)가 실제로 실행되는지 확인 (vacuous pass 방지)**.
 - 발견 즉시 수정하거나 체크포인트 보고에 명시한다.
+- **트러블슈팅 가치 있는 사항은 체크포인트 완료 보고 전에 즉시 `mydocs/troubleshootings/` 작성** (PR 전 보강으로 미루지 않는다).
 
 ## 도구 활용 원칙
 

@@ -1,7 +1,7 @@
 use proptest::prelude::*;
 use rpdf_parser::{
-    find_eof, parse_header, parse_indirect_object, parse_object, parse_startxref, parse_trailer,
-    parse_xref,
+    find_eof, parse_content_stream, parse_header, parse_indirect_object, parse_object,
+    parse_startxref, parse_trailer, parse_xref,
 };
 
 proptest! {
@@ -43,5 +43,11 @@ proptest! {
     ) {
         let safe_offset = offset % data.len();
         let _ = parse_object(&data, safe_offset);
+    }
+
+    /// 임의 바이트 입력에 대해 parse_content_stream이 패닉을 일으키지 않는다.
+    #[test]
+    fn arbitrary_input_never_panics_parse_content_stream(data in proptest::collection::vec(any::<u8>(), 0..65536)) {
+        let _ = parse_content_stream(&data);
     }
 }

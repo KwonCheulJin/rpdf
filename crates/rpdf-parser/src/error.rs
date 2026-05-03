@@ -166,4 +166,56 @@ pub enum ParseError {
         declared: usize,
         actual: usize,
     },
+
+    // ── Document IR 전용 (Task #8) ────────────────────────────────────────────
+    /// Reference chain에서 동일 obj_num이 두 번 나타남 (cycle 감지).
+    ///
+    /// cycle 감지는 obj_num만 비교한다 (generation 무시).
+    /// Reference 해소 chain에서 같은 obj_num의 재방문은 실질적 cycle로 간주.
+    #[error("Reference cycle 감지: {obj_id}")]
+    ReferenceCycle { obj_id: rpdf_core::types::ObjectId },
+
+    /// Reference chain 깊이가 허용 상한(`MAX_RESOLVE_DEPTH`)을 초과함.
+    #[error("Reference chain 깊이 초과: max_depth={max_depth}")]
+    ReferenceTooDeep { max_depth: usize },
+
+    /// 요청한 객체 ID가 xref 테이블에 없거나 Free 엔트리.
+    #[error("객체 참조를 해소할 수 없음: {obj_id}")]
+    ReferenceNotFound { obj_id: rpdf_core::types::ObjectId },
+
+    /// 문서 카탈로그(`/Type /Catalog`) 구조가 손상됨.
+    #[error("카탈로그 구조 오류: {reason}")]
+    MalformedCatalog { reason: String },
+
+    /// 페이지 트리 구조가 손상됨 (`/Kids` 없음, `/Type` 불명 등).
+    #[error("페이지 트리 구조 오류: {reason}")]
+    MalformedPageTree { reason: String },
+
+    /// 페이지 `/Contents` 구조가 손상됨 (배열 항목이 Stream이 아님 등).
+    #[error("페이지 콘텐츠 구조 오류: {reason}")]
+    MalformedPageContents { reason: String },
+
+    /// `/Contents` 스트림의 `/Filter`가 지원 범위 밖 (FlateDecode 또는 없음만 허용).
+    #[error("지원하지 않는 Contents 필터: {filter:?}")]
+    InvalidContentStreamFilter { filter: String },
+
+    // ── content stream 파싱 (Task #7) ────────────────────────────────────────
+    /// content stream 구조 오류 (피연산자/연산자 불일치, 예상치 못한 EOF 등).
+    /// 발생: parse_content_stream — 토큰 파싱 실패.
+    #[error("content stream 파싱 오류 (오프셋 {offset}): {reason}")]
+    MalformedContentStream { offset: usize, reason: String },
+
+    /// 인라인 이미지 (BI...ID...EI) 파싱 오류.
+    /// 발생: parse_inline_image — ID/EI 키워드 누락 또는 EOF.
+    #[error("인라인 이미지 파싱 오류 (오프셋 {offset}): {reason}")]
+    MalformedInlineImage { offset: usize, reason: String },
+
+    /// q/Q 상태 스택 불균형.
+    ///
+    /// - Q 만났을 때 depth == 0 → depth = -1, offset = 해당 Q 위치
+    /// - 파싱 완료 후 depth > 0 → offset = data.len()
+    ///
+    /// 발생: parse_content_stream — q/Q 깊이 추적.
+    #[error("graphics state 스택 불균형 (오프셋 {offset}): depth = {depth}")]
+    UnbalancedGraphicsState { offset: usize, depth: i32 },
 }
