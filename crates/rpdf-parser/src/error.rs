@@ -88,4 +88,59 @@ pub enum ParseError {
     /// 위 변형으로 분류되지 않는 형식 오류.
     #[error("예상치 못한 형식: {0}")]
     UnexpectedFormat(String),
+
+    // ── xref 스트림 전용 (Task #5) ────────────────────────────────────────────
+    /// xref 스트림 간접 객체가 스트림이 아니거나 딕셔너리 구조가 손상됨.
+    /// 발생: parse_xref_stream_dict — /Type /XRef 불일치, stream 키워드 없음 등.
+    #[error("xref 스트림 구조 오류 (오프셋 {offset}): {reason}")]
+    MalformedXrefStream { offset: u64, reason: String },
+
+    /// xref 스트림 `/W` 배열이 없거나 3개의 비음수 정수로 구성되지 않음.
+    /// 발생: parse_xref_stream_dict — /W 누락 또는 원소 수 != 3.
+    #[error("xref 스트림 /W 배열 오류 (오프셋 {offset}): {reason}")]
+    XrefStreamInvalidW { offset: u64, reason: String },
+
+    /// xref 스트림 `/Index` 배열이 홀수 원소 개수이거나 비정수를 포함함.
+    /// 발생: parse_xref_stream_dict — /Index 원소 수가 홀수.
+    #[error("xref 스트림 /Index 배열 오류 (오프셋 {offset}): {reason}")]
+    XrefStreamInvalidIndex { offset: u64, reason: String },
+
+    /// xref 스트림 `/Filter`가 FlateDecode 이외의 필터를 지정함.
+    /// 발생: parse_xref_stream_dict — filter == "LZWDecode" 등.
+    #[error("지원하지 않는 xref 스트림 필터 (오프셋 {offset}): {filter:?}")]
+    InvalidXrefStreamFilter { offset: u64, filter: String },
+
+    /// `/DecodeParms /Predictor` 값이 지원 범위(1, 10–15) 밖.
+    /// 발생: unpredict_png — Predictor=2(TIFF) 또는 알 수 없는 값.
+    #[error("지원하지 않는 Predictor 값 (오프셋 {offset}): {value}")]
+    UnsupportedPredictor { offset: u64, value: u8 },
+
+    /// zlib/FlateDecode 압축 해제 실패.
+    /// 발생: decompress_flate — 손상된 zlib 스트림.
+    #[error("xref 스트림 압축 해제 실패 (오프셋 {offset}): {reason}")]
+    XrefStreamDecompressError { offset: u64, reason: String },
+
+    /// `/W` 배열 크기 합계(W1+W2+W3)와 스트림 데이터 길이가 맞지 않음.
+    /// 발생: decode_entries — 행 경계에서 데이터 잘림.
+    #[error(
+        "xref 스트림 W 필드 크기 불일치 (오프셋 {offset}): \
+         행 크기 {w_total}, 데이터 잔여 {data_len}"
+    )]
+    XrefStreamWFieldMismatch {
+        offset: u64,
+        w_total: usize,
+        data_len: usize,
+    },
+
+    /// xref 스트림 실제 엔트리 수가 `/Index`가 선언한 수와 다름.
+    /// 발생: decode_entries — 디코딩 후 엔트리 수 검증.
+    #[error(
+        "xref 스트림 엔트리 수 불일치 (오프셋 {offset}): \
+         /Index 선언 {declared}, 실제 {actual}"
+    )]
+    XrefStreamEntryCountMismatch {
+        offset: u64,
+        declared: usize,
+        actual: usize,
+    },
 }

@@ -29,6 +29,16 @@ pub struct XrefSectionInfo {
     pub entry_count: usize,
 }
 
+/// `parse_xref_section` / `parse_xref_stream` 공통 반환 타입.
+///
+/// `parse_xref_chain`이 전통 xref 섹션과 xref 스트림을 동일하게 처리할 수 있도록
+/// 두 경로의 반환값을 통일한다 (Hybrid Chain 지원).
+pub(crate) struct XrefSectionResult {
+    pub entries: Vec<(u32, XrefEntry)>,
+    pub trailer: PdfTrailer,
+    pub section_info: XrefSectionInfo,
+}
+
 /// xref chain의 최대 허용 깊이.
 ///
 /// 일반 PDF는 1-3 단계, 형식 채우기 PDF도 10-50 단계 이내.
@@ -81,14 +91,10 @@ fn parse_xref_chain(data: &[u8], start_offset: u64) -> Result<ParsedXref, ParseE
         visited.insert(current);
         depth += 1;
 
-        let (entries, section_trailer) = parse_xref_section(data, current)?;
-        let entry_count = entries.len();
-        sections.push(XrefSectionInfo {
-            offset: current,
-            entry_count,
-        });
+        let result = parse_xref_section(data, current)?;
+        sections.push(result.section_info);
 
-        for (obj_num, entry) in entries {
+        for (obj_num, entry) in result.entries {
             table.insert_if_absent(obj_num, entry);
         }
 
@@ -96,10 +102,10 @@ fn parse_xref_chain(data: &[u8], start_offset: u64) -> Result<ParsedXref, ParseE
         // 이전 섹션들의 trailer는 /Prev chain을 잇는 용도이며,
         // /Root, /Info 등 문서 수준 메타는 최신 trailer가 권위를 가진다.
         if first_trailer.is_none() {
-            first_trailer = Some(section_trailer.clone());
+            first_trailer = Some(result.trailer.clone());
         }
 
-        match section_trailer.prev {
+        match result.trailer.prev {
             Some(prev_offset) => current = prev_offset,
             None => break,
         }
@@ -114,11 +120,8 @@ fn parse_xref_chain(data: &[u8], start_offset: u64) -> Result<ParsedXref, ParseE
 
 /// 단일 xref 섹션(xref 키워드부터 trailer 딕셔너리까지)을 파싱한다.
 ///
-/// 반환: (객체번호 → XrefEntry 맵, trailer)
-fn parse_xref_section(
-    data: &[u8],
-    offset: u64,
-) -> Result<(Vec<(u32, XrefEntry)>, PdfTrailer), ParseError> {
+/// 반환: `XrefSectionResult` — `parse_xref_stream`과 동일 타입으로 Hybrid Chain 지원.
+fn parse_xref_section(data: &[u8], offset: u64) -> Result<XrefSectionResult, ParseError> {
     let file_size = data.len() as u64;
     if offset >= file_size {
         return Err(ParseError::XrefOffsetOutOfBounds { offset, file_size });
@@ -198,7 +201,15 @@ fn parse_xref_section(
     // "trailer" 키워드 다음 딕셔너리 파싱
     let trailer = parse_trailer_at(data, pos)?;
 
-    Ok((entries, trailer))
+    let entry_count = entries.len();
+    Ok(XrefSectionResult {
+        entries,
+        trailer,
+        section_info: XrefSectionInfo {
+            offset,
+            entry_count,
+        },
+    })
 }
 
 /// `data[pos..]`가 `"trailer"` 키워드로 시작한다고 가정하고 딕셔너리를 파싱한다.

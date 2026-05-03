@@ -18,3 +18,4 @@ anyhow = "1"
 tracing = "0.1"
 serde = { version = "1", features = ["derive"] }
 proptest = "1"
+flate2 = "1.1"
