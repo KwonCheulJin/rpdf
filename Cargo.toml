@@ -1,7 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/rpdf-core",
+    "crates/rpdf-core", "crates/rpdf-parser",
 ]
 
 [workspace.package]
@@ -12,7 +12,9 @@ license = "MIT"
 repository = "https://github.com/KwonCheulJin/rpdf"
 
 [workspace.dependencies]
+rpdf-core = { path = "crates/rpdf-core" }
 thiserror = "2"
 anyhow = "1"
 tracing = "0.1"
 serde = { version = "1", features = ["derive"] }
+proptest = "1"
