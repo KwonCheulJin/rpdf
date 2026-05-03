@@ -4,3 +4,4 @@ mod header_tests;
 mod integration_tests;
 mod startxref_tests;
 mod trailer_tests;
+mod xref_tests;

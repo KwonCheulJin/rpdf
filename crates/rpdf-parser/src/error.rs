@@ -37,9 +37,29 @@ pub enum ParseError {
     #[error("잘못된 간접 참조: {found:?}")]
     InvalidObjectRef { found: String },
 
-    /// xref 스트림 형식(PDF 1.5+) 감지됨. Task #3에서 처리 예정.
-    #[error("xref 스트림 형식은 지원되지 않음 (Task #3에서 처리 예정)")]
-    XrefStreamUnsupported,
+    /// xref 스트림 형식(PDF 1.5+) 감지됨. Task #5에서 처리 예정.
+    #[error("xref 스트림 형식은 지원되지 않음 (오프셋 {xref_offset}): Task #5에서 처리 예정")]
+    XrefStreamUnsupported { xref_offset: u64 },
+
+    /// xref 항목의 20바이트 형식이 올바르지 않음.
+    #[error("xref 항목 형식 오류 (오프셋 {offset}): {reason}")]
+    MalformedXref { offset: u64, reason: String },
+
+    /// `/Prev` chain에서 이미 방문한 오프셋이 다시 등장함 (순환 참조).
+    #[error("xref chain 순환 감지 (오프셋 {offset})")]
+    XrefChainCycle { offset: u64 },
+
+    /// `/Prev` chain 깊이가 허용 상한(MAX_XREF_CHAIN_DEPTH)을 초과함.
+    #[error("xref chain 깊이 초과: {max_depth}")]
+    XrefChainTooDeep { max_depth: usize },
+
+    /// `startxref` 값이 파일 크기를 벗어남.
+    #[error("xref 오프셋 {offset}이 파일 크기 {file_size}를 벗어남")]
+    XrefOffsetOutOfBounds { offset: u64, file_size: u64 },
+
+    /// 지정된 오프셋에 `xref` 키워드가 없음 (다른 데이터 또는 xref 스트림).
+    #[error("오프셋 {offset}에 xref 테이블 없음: {found:?}")]
+    InvalidXrefAtOffset { offset: u64, found: String },
 
     /// trailer 딕셔너리 구조가 손상됨 (예: `<<` 닫힘 없음, 값 타입 불일치 등).
     #[error("trailer 딕셔너리 형식 오류: {reason}")]

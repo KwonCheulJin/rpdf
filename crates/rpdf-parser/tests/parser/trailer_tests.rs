@@ -213,7 +213,7 @@ fn reject_xref_stream_pdf() {
     data.extend_from_slice(b"%%EOF\n");
     assert!(matches!(
         parse_trailer(&data, eof_offset).unwrap_err(),
-        ParseError::XrefStreamUnsupported
+        ParseError::XrefStreamUnsupported { xref_offset: _ }
     ));
 }
 
@@ -305,6 +305,6 @@ fn reject_trailer_beyond_search_window() {
     data.extend_from_slice(b"%%EOF\n");
     assert!(matches!(
         parse_trailer(&data, eof_offset).unwrap_err(),
-        ParseError::MissingTrailer | ParseError::XrefStreamUnsupported
+        ParseError::MissingTrailer | ParseError::XrefStreamUnsupported { xref_offset: _ }
     ));
 }
