@@ -70,10 +70,18 @@
 
 ## 트러블슈팅
 
-특별한 트러블슈팅 없음. 주요 발견:
-1. Rust 2024 에디션 `gen` 예약 키워드 — 테스트 헬퍼 파라미터명 충돌 (즉시 수정)
-2. `ContentStreamOperation`/`PdfDict` Serialize 미구현 — `#[serde(skip)]` 적용
-3. `extract_stream_data` 불필요한 `data` 파라미터 — clippy 경고 전 자체 수정
+- [Rust 2024 gen 예약어](../troubleshootings/rust-2024-gen-keyword.md) — `gen`이 Rust 2024 예약어로 추가, 필드명 `generation`으로 변경
+- [serde(skip) PdfDict](../troubleshootings/serde-skip-pdfdict.md) — `PdfDict`/`PdfObject` Serialize 미구현으로 `#[serde(skip)]` 적용
+
+## 회고 분류
+
+| 후보 | 분류 | 근거 |
+|------|------|------|
+| chain.contains(obj_num) 정책 | C | IT-13~17 실제 PDF에서 cycle/depth 에러 미발생. 테스트는 합성 데이터 전용. 정책 자체는 문서화됨 |
+| eager 로딩 모델 | C | 4.86초 내 5개 PDF 14페이지 처리, 현 단계 무난. 메모리 압박 없음 |
+| ObjStm 캐시 효과 | C | 구조적으로 효과 있으나 정량 측정 데이터 없음 |
+| /Type 추론 정책 발동 | C | (None, Some(_)) 분기 코드 존재하나 IT-13~17에서 실제 발동 미확인. 인위적 테스트(C-7)로만 검증 |
+| 단일 세션 자율 진행 + 셀프 리뷰 | **A** | 트러블슈팅 즉시 작성 미이행 패턴 발견 → CLAUDE.md 셀프 리뷰 섹션에 즉시 작성 규칙 추가 |
 
 ## 다음 작업
 
