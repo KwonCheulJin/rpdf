@@ -3,10 +3,8 @@ use std::collections::HashSet;
 use rpdf_core::types::{XrefEntry, XrefTable};
 
 use crate::error::ParseError;
-use crate::object_parser::{
-    is_name_char, parse_indirect_ref, parse_u64_val, peek_str, skip_value, skip_whitespace,
-};
-use crate::trailer::{PdfTrailer, is_xref_stream};
+use crate::objects::{parse_dictionary, parse_u64_val, peek_str, skip_whitespace};
+use crate::trailer::{PdfTrailer, extract_trailer_fields, is_xref_stream};
 
 /// `parse_xref` 반환값: 병합된 xref 테이블, 권위 있는 trailer, 섹션 메타데이터.
 #[derive(Debug, Clone)]
@@ -207,8 +205,6 @@ fn parse_xref_section(
 ///
 /// xref 섹션 직후 순방향(forward) 파싱. `parse_trailer` (역방향)와는 별개 함수이다.
 fn parse_trailer_at(data: &[u8], pos: usize) -> Result<PdfTrailer, ParseError> {
-    use crate::object_parser::find_dict_close;
-
     let bytes = &data[pos..];
     if !bytes.starts_with(b"trailer") {
         return Err(ParseError::MissingTrailer);
@@ -222,103 +218,14 @@ fn parse_trailer_at(data: &[u8], pos: usize) -> Result<PdfTrailer, ParseError> {
         .position(|w| w == b"<<")
         .ok_or(ParseError::MissingTrailer)?;
 
-    let dict_inner_start = after_ws + open_rel + 2;
-    let dict_inner_data = &data[dict_inner_start..];
+    let dict_start = after_ws + open_rel;
 
-    let close_pos =
-        find_dict_close(dict_inner_data).ok_or_else(|| ParseError::MalformedTrailer {
-            reason: "trailer 딕셔너리가 닫히지 않음 (>> 없음)".to_string(),
+    let (dict, _consumed) =
+        parse_dictionary(data, dict_start, 0).map_err(|_| ParseError::MalformedTrailer {
+            reason: "trailer 딕셔너리 파싱 실패".to_string(),
         })?;
 
-    parse_trailer_dict_fields(&dict_inner_data[..close_pos])
-}
-
-/// `<<` ~ `>>` 사이 내용(inner bytes)에서 trailer 필드를 추출한다.
-///
-/// `trailer.rs`의 `parse_dict_fields`와 동일 로직이지만, 모듈 간 결합을 피하기 위해
-/// `xref.rs`에 비공개 함수로 둔다. Task #4에서 공통 추출 가치가 확인되면 이동 검토.
-fn parse_trailer_dict_fields(data: &[u8]) -> Result<PdfTrailer, ParseError> {
-    use rpdf_core::types::ObjectId;
-
-    let mut size: Option<u32> = None;
-    let mut root: Option<ObjectId> = None;
-    let mut info: Option<ObjectId> = None;
-    let mut prev: Option<u64> = None;
-
-    let mut i = 0;
-    while i < data.len() {
-        i += skip_whitespace(&data[i..]);
-        if i >= data.len() {
-            break;
-        }
-
-        if data[i] != b'/' {
-            i += 1;
-            continue;
-        }
-
-        i += 1;
-        let name_end = data[i..]
-            .iter()
-            .position(|&b| !is_name_char(b))
-            .map(|n| i + n)
-            .unwrap_or(data.len());
-        let name = &data[i..name_end];
-        i = name_end;
-
-        i += skip_whitespace(&data[i..]);
-        if i >= data.len() {
-            break;
-        }
-
-        match name {
-            b"Size" => {
-                let (n, len) =
-                    parse_u64_val(&data[i..]).ok_or_else(|| ParseError::MalformedTrailer {
-                        reason: format!("/Size 값이 정수가 아님: {}", peek_str(&data[i..], 16)),
-                    })?;
-                size = Some(n as u32);
-                i += len;
-            }
-            b"Root" => {
-                let (obj, len) =
-                    parse_indirect_ref(&data[i..]).ok_or_else(|| ParseError::InvalidObjectRef {
-                        found: peek_str(&data[i..], 20),
-                    })?;
-                root = Some(obj);
-                i += len;
-            }
-            b"Info" => {
-                if let Some((obj, len)) = parse_indirect_ref(&data[i..]) {
-                    info = Some(obj);
-                    i += len;
-                } else {
-                    i += skip_value(&data[i..]);
-                }
-            }
-            b"Prev" => {
-                let (n, len) =
-                    parse_u64_val(&data[i..]).ok_or_else(|| ParseError::MalformedTrailer {
-                        reason: format!("/Prev 값이 정수가 아님: {}", peek_str(&data[i..], 16)),
-                    })?;
-                prev = Some(n);
-                i += len;
-            }
-            _ => {
-                i += skip_value(&data[i..]);
-            }
-        }
-    }
-
-    let size = size.ok_or(ParseError::MissingRequiredKey { key: "Size" })?;
-    let root = root.ok_or(ParseError::MissingRequiredKey { key: "Root" })?;
-
-    Ok(PdfTrailer {
-        size,
-        root,
-        info,
-        prev,
-    })
+    extract_trailer_fields(&dict)
 }
 
 /// 서브섹션 헤더 `<first_obj> <count>` 를 파싱한다.

@@ -1,10 +1,7 @@
 use crate::error::ParseError;
-use crate::object_parser::{
-    find_dict_close, is_name_char, parse_indirect_ref, parse_u64_val, peek_str, skip_value,
-    skip_whitespace,
-};
+use crate::objects::parse_dictionary;
 use crate::startxref::parse_startxref;
-use rpdf_core::types::ObjectId;
+use rpdf_core::types::{ObjectId, PdfDict, PdfObject};
 
 /// PDF trailer 딕셔너리 파싱 결과.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -72,22 +69,22 @@ pub fn parse_trailer(data: &[u8], search_end: usize) -> Result<ParsedTrailer, Pa
         .position(|w| w == b"<<")
         .ok_or(ParseError::MissingTrailer)?;
 
-    let dict_inner_start = after_kw_start + open_rel + 2;
+    let dict_start = after_kw_start + open_rel;
 
-    let dict_inner_data = &data[dict_inner_start..];
-
-    let close_pos =
-        find_dict_close(dict_inner_data).ok_or_else(|| ParseError::MalformedTrailer {
-            reason: "trailer 딕셔너리가 닫히지 않음 (>> 없음)".to_string(),
+    let (dict, consumed) =
+        parse_dictionary(data, dict_start, 0).map_err(|_| ParseError::MalformedTrailer {
+            reason: "trailer 딕셔너리 파싱 실패".to_string(),
         })?;
 
-    if close_pos > DICT_MAX_BYTES {
+    // consumed = << (2) + inner + >> (2). inner = consumed - 4
+    let inner_len = consumed.saturating_sub(4);
+    if inner_len > DICT_MAX_BYTES {
         return Err(ParseError::TrailerTooLarge {
             limit_kb: DICT_MAX_BYTES / 1024,
         });
     }
 
-    let trailer = parse_dict_fields(&dict_inner_data[..close_pos])?;
+    let trailer = extract_trailer_fields(&dict)?;
 
     Ok(ParsedTrailer {
         trailer,
@@ -113,81 +110,47 @@ pub(crate) fn is_xref_stream(data: &[u8], xref_offset: u64) -> bool {
     bytes[skip..window_end].windows(3).any(|w| w == b"obj")
 }
 
-/// `<<` ~ `>>` 사이 내용(inner bytes)에서 trailer 필드를 추출한다.
-fn parse_dict_fields(data: &[u8]) -> Result<PdfTrailer, ParseError> {
-    let mut size: Option<u32> = None;
-    let mut root: Option<ObjectId> = None;
-    let mut info: Option<ObjectId> = None;
-    let mut prev: Option<u64> = None;
+/// `PdfDict`에서 trailer 필드를 추출해 `PdfTrailer`를 구성한다.
+///
+/// `xref.rs`의 `parse_trailer_at`에서도 공유한다.
+pub(crate) fn extract_trailer_fields(dict: &PdfDict) -> Result<PdfTrailer, ParseError> {
+    // /Size — 필수, 양의 정수
+    let size_obj = dict
+        .get(b"Size")
+        .ok_or(ParseError::MissingRequiredKey { key: "Size" })?;
+    let size = size_obj
+        .as_u64()
+        .map(|n| n as u32)
+        .ok_or_else(|| ParseError::MalformedTrailer {
+            reason: format!("/Size 값이 정수가 아님: {:?}", size_obj),
+        })?;
 
-    let mut i = 0;
-    while i < data.len() {
-        i += skip_whitespace(&data[i..]);
-        if i >= data.len() {
-            break;
+    // /Root — 필수, 간접 참조
+    let root_obj = dict
+        .get(b"Root")
+        .ok_or(ParseError::MissingRequiredKey { key: "Root" })?;
+    let root = match root_obj {
+        PdfObject::Reference(id) => *id,
+        _ => {
+            return Err(ParseError::InvalidObjectRef {
+                found: format!("{root_obj:?}"),
+            });
         }
+    };
 
-        if data[i] != b'/' {
-            i += 1;
-            continue;
-        }
+    // /Info — 선택, 간접 참조
+    let info = match dict.get(b"Info") {
+        Some(PdfObject::Reference(id)) => Some(*id),
+        _ => None,
+    };
 
-        // Name 파싱 (/ 이후 name char 연속)
-        i += 1;
-        let name_end = data[i..]
-            .iter()
-            .position(|&b| !is_name_char(b))
-            .map(|n| i + n)
-            .unwrap_or(data.len());
-        let name = &data[i..name_end];
-        i = name_end;
-
-        i += skip_whitespace(&data[i..]);
-        if i >= data.len() {
-            break;
-        }
-
-        match name {
-            b"Size" => {
-                let (n, len) =
-                    parse_u64_val(&data[i..]).ok_or_else(|| ParseError::MalformedTrailer {
-                        reason: format!("/Size 값이 정수가 아님: {}", peek_str(&data[i..], 16)),
-                    })?;
-                size = Some(n as u32);
-                i += len;
-            }
-            b"Root" => {
-                let (obj, len) =
-                    parse_indirect_ref(&data[i..]).ok_or_else(|| ParseError::InvalidObjectRef {
-                        found: peek_str(&data[i..], 20),
-                    })?;
-                root = Some(obj);
-                i += len;
-            }
-            b"Info" => {
-                if let Some((obj, len)) = parse_indirect_ref(&data[i..]) {
-                    info = Some(obj);
-                    i += len;
-                } else {
-                    i += skip_value(&data[i..]);
-                }
-            }
-            b"Prev" => {
-                let (n, len) =
-                    parse_u64_val(&data[i..]).ok_or_else(|| ParseError::MalformedTrailer {
-                        reason: format!("/Prev 값이 정수가 아님: {}", peek_str(&data[i..], 16)),
-                    })?;
-                prev = Some(n);
-                i += len;
-            }
-            _ => {
-                i += skip_value(&data[i..]);
-            }
-        }
-    }
-
-    let size = size.ok_or(ParseError::MissingRequiredKey { key: "Size" })?;
-    let root = root.ok_or(ParseError::MissingRequiredKey { key: "Root" })?;
+    // /Prev — 선택, 양의 정수
+    let prev = match dict.get(b"Prev") {
+        None => None,
+        Some(obj) => Some(obj.as_u64().ok_or_else(|| ParseError::MalformedTrailer {
+            reason: "/Prev 값이 정수가 아님".to_string(),
+        })?),
+    };
 
     Ok(PdfTrailer {
         size,

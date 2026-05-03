@@ -9,11 +9,46 @@
 //! - 문자열 인코딩 해석 (Task #7)
 //! - 간접 참조 해결 (Task #7)
 use crate::error::ParseError;
-use crate::object_parser::{is_name_char, is_whitespace, peek_str};
 use rpdf_core::types::{IndirectObject, ObjectId, PdfDict, PdfObject, PdfStream};
 
 /// 배열·딕셔너리 재귀 허용 최대 깊이. (ISO 32000 §7.3.6, §7.3.7)
 pub(crate) const MAX_OBJECT_DEPTH: usize = 50;
+
+pub(crate) fn is_whitespace(b: u8) -> bool {
+    matches!(b, b' ' | b'\t' | b'\r' | b'\n' | b'\x0C' | b'\x00')
+}
+
+pub(crate) fn is_name_char(b: u8) -> bool {
+    b.is_ascii_graphic()
+        && !matches!(
+            b,
+            b'/' | b'<' | b'>' | b'[' | b']' | b'(' | b')' | b'{' | b'}' | b'%'
+        )
+}
+
+pub(crate) fn peek_str(data: &[u8], max: usize) -> String {
+    String::from_utf8_lossy(&data[..data.len().min(max)]).to_string()
+}
+
+/// 슬라이스 앞에 붙은 PDF 화이트스페이스 바이트 수를 반환한다. 주석 미처리.
+pub(crate) fn skip_whitespace(data: &[u8]) -> usize {
+    data.iter()
+        .position(|&b| !is_whitespace(b))
+        .unwrap_or(data.len())
+}
+
+/// `data` 앞의 ASCII 십진 정수를 파싱한다.
+pub(crate) fn parse_u64_val(data: &[u8]) -> Option<(u64, usize)> {
+    if data.is_empty() || !data[0].is_ascii_digit() {
+        return None;
+    }
+    let end = data
+        .iter()
+        .position(|&b| !b.is_ascii_digit())
+        .unwrap_or(data.len());
+    let n: u64 = std::str::from_utf8(&data[..end]).ok()?.parse().ok()?;
+    Some((n, end))
+}
 
 /// 화이트스페이스와 주석(`%` ~ 줄 끝)을 건너뛴다.
 ///

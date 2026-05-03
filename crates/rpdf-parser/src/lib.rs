@@ -3,7 +3,6 @@
 mod eof;
 mod error;
 mod header;
-mod object_parser;
 mod objects;
 mod startxref;
 mod trailer;
