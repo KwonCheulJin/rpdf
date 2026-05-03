@@ -1,5 +1,6 @@
 //! rpdf-parser: PDF 파일 파싱 로직
 
+mod content_stream;
 mod eof;
 mod error;
 mod header;
@@ -10,6 +11,7 @@ mod trailer;
 mod xref;
 mod xref_stream;
 
+pub use content_stream::parse_content_stream;
 pub use eof::find_eof;
 pub use error::ParseError;
 pub use header::{PdfHeader, parse_header};

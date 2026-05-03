@@ -166,4 +166,23 @@ pub enum ParseError {
         declared: usize,
         actual: usize,
     },
+
+    /// content stream 구조 오류 (피연산자/연산자 불일치, 예상치 못한 EOF 등).
+    /// 발생: parse_content_stream — 토큰 파싱 실패.
+    #[error("content stream 파싱 오류 (오프셋 {offset}): {reason}")]
+    MalformedContentStream { offset: usize, reason: String },
+
+    /// 인라인 이미지 (BI...ID...EI) 파싱 오류.
+    /// 발생: parse_inline_image — ID/EI 키워드 누락 또는 EOF.
+    #[error("인라인 이미지 파싱 오류 (오프셋 {offset}): {reason}")]
+    MalformedInlineImage { offset: usize, reason: String },
+
+    /// q/Q 상태 스택 불균형.
+    ///
+    /// - Q 만났을 때 depth == 0 → depth = -1, offset = 해당 Q 위치
+    /// - 파싱 완료 후 depth > 0 → offset = data.len()
+    ///
+    /// 발생: parse_content_stream — q/Q 깊이 추적.
+    #[error("graphics state 스택 불균형 (오프셋 {offset}): depth = {depth}")]
+    UnbalancedGraphicsState { offset: usize, depth: i32 },
 }

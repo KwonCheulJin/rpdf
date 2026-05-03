@@ -1,3 +1,4 @@
+mod content_stream_tests;
 mod eof_tests;
 mod fuzz_tests;
 mod header_tests;
