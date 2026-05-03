@@ -78,6 +78,23 @@
 - Task #4: `object_parser.rs` 확장 (실수, 스트림, boolean, null) — `XrefTable::get`으로 오프셋 확인 후 객체 파싱
 - Task #5: xref 스트림 파싱 (`flate2` 도입) — Task #4 객체 파서 활용
 
+## 회고 분류 결과
+
+| # | 항목 | 카테고리 | 적용 위치 | 비고 |
+|---|------|---------|---------|-----|
+| 1 | 테스트 파일 배치 | **A** | CLAUDE.md `## 설계 원칙 > ### 테스트 파일 배치` | |
+| 2 | xref chain 검사 순서 버그 | **C** | — | 트러블슈팅 문서 작성됨 |
+| 3 | `consume_newline` 엄격화 | **C** | — | 코드 수정으로 해결 |
+| 4 | 체크포인트 시점 셀프 리뷰 | **A** | CLAUDE.md `## 설계 원칙 > ### 체크포인트 시점 셀프 리뷰` | C → A 재분류 |
+| 5 | `build_chain` 반복 수렴 | **C** | — | 일반화 가치 낮음 |
+
+**카테고리 분포**: A 2건, C 3건
+
+**누적 통계**:
+- Task #2: A 2건, C 3건
+- Task #3: A 2건, C 3건
+- 총: A 4건, C 6건
+
 ## 참고 자료
 
 - 트러블슈팅: `mydocs/troubleshootings/xref-chain-check-order.md`
