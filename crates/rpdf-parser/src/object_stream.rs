@@ -46,11 +46,7 @@ impl ParsedObjectStream {
 /// 반환된 `ParsedObjectStream.objects`는 `(obj_num, PdfObject)` 쌍 벡터.
 ///
 /// ISO 32000 §7.5.7
-#[allow(dead_code)] // IT-9/IT-10 통합 테스트 및 Task #8에서 호출됨
-pub(crate) fn parse_object_stream(
-    data: &[u8],
-    offset: u64,
-) -> Result<ParsedObjectStream, ParseError> {
+pub fn parse_object_stream(data: &[u8], offset: u64) -> Result<ParsedObjectStream, ParseError> {
     // a) ObjStm 간접 객체 파싱
     let (indirect, _) =
         parse_indirect_object(data, offset as usize).map_err(|e| ParseError::MalformedObjStm {
@@ -516,5 +512,14 @@ mod internal_tests {
             matches!(err, ParseError::MalformedObjStm { .. }),
             "expected MalformedObjStm, got {err:?}"
         );
+    }
+
+    // ── D proptest ──────────────────────────────────────────────────────────────
+
+    proptest::proptest! {
+        #[test]
+        fn arbitrary_input_never_panics_parse_object_stream(data: Vec<u8>) {
+            let _ = parse_object_stream(&data, 0);
+        }
     }
 }

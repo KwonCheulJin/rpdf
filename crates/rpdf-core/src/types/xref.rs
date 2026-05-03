@@ -38,6 +38,11 @@ impl XrefTable {
     pub fn is_empty(&self) -> bool {
         self.entries.is_empty()
     }
+
+    /// 모든 엔트리를 `(obj_num, XrefEntry)` 쌍으로 순회한다 (obj_num 오름차순).
+    pub fn iter(&self) -> impl Iterator<Item = (&u32, &XrefEntry)> {
+        self.entries.iter()
+    }
 }
 
 impl Default for XrefTable {

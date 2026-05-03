@@ -13,7 +13,7 @@ mod xref_stream;
 pub use eof::find_eof;
 pub use error::ParseError;
 pub use header::{PdfHeader, parse_header};
-pub use object_stream::ParsedObjectStream;
+pub use object_stream::{ParsedObjectStream, parse_object_stream};
 pub use objects::{parse_indirect_object, parse_object};
 pub use startxref::parse_startxref;
 pub use trailer::{ParsedTrailer, PdfTrailer, parse_trailer};
