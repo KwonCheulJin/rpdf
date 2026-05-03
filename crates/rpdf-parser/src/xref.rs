@@ -15,7 +15,11 @@ pub struct ParsedXref {
     pub sections: Vec<XrefSectionInfo>,
 }
 
-/// 단일 xref 섹션의 메타데이터.
+/// 단일 xref 섹션의 위치 정보 (디버그·진단용).
+///
+/// Task #3 시점에서는 offset과 entry_count만 추적한다.
+/// Task #8 디버그 CLI에서 더 상세한 정보가 필요해지면
+/// `section_size_bytes`, `object_id_range`, `subsection_count` 등을 추가 검토한다.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct XrefSectionInfo {
     pub offset: u64,

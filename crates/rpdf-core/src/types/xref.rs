@@ -5,9 +5,13 @@ use std::collections::BTreeMap;
 /// `BTreeMap`을 사용해 객체 번호 순 정렬을 보장한다.
 /// incremental update chain 병합 시 `or_insert` 의미론을 적용한다:
 /// 최신(현재) 섹션의 엔트리가 이전 섹션의 엔트리보다 우선한다.
+///
+/// 내부 자료구조(`BTreeMap`)는 `pub(crate)`로 숨기고 메서드로만 접근한다.
+/// 향후 자료구조 교체 시 외부 코드에 영향을 주지 않기 위함이다.
+/// 추가 메서드(iter, contains 등)는 Task #4에서 실제 필요해지면 추가한다.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct XrefTable {
-    pub entries: BTreeMap<u32, XrefEntry>,
+    pub(crate) entries: BTreeMap<u32, XrefEntry>,
 }
 
 impl XrefTable {
@@ -21,6 +25,18 @@ impl XrefTable {
     /// (최신 섹션이 먼저 삽입되므로, 이전 섹션 엔트리는 무시된다.)
     pub fn insert_if_absent(&mut self, obj_num: u32, entry: XrefEntry) {
         self.entries.entry(obj_num).or_insert(entry);
+    }
+
+    pub fn get(&self, obj_num: u32) -> Option<&XrefEntry> {
+        self.entries.get(&obj_num)
+    }
+
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
     }
 }
 
