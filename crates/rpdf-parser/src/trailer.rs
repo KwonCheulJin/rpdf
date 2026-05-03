@@ -96,7 +96,7 @@ pub fn parse_trailer(data: &[u8], search_end: usize) -> Result<ParsedTrailer, Pa
 }
 
 /// `xref_offset`이 가리키는 바이트가 `<N> <G> obj` 패턴이면 xref 스트림으로 판단한다.
-fn is_xref_stream(data: &[u8], xref_offset: u64) -> bool {
+pub(crate) fn is_xref_stream(data: &[u8], xref_offset: u64) -> bool {
     let offset = xref_offset as usize;
     if offset >= data.len() {
         return false;

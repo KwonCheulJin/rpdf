@@ -54,7 +54,10 @@ pub enum XrefEntry {
     /// 사용 중인 객체: 파일 내 바이트 오프셋과 generation 번호.
     InUse { offset: u64, generation: u16 },
     /// 삭제된(free) 객체: 다음 free 객체 번호와 generation 번호.
-    Free { next_free_obj_num: u32, generation: u16 },
+    Free {
+        next_free_obj_num: u32,
+        generation: u16,
+    },
     /// 압축 객체 스트림 내 객체 (PDF 1.5+, Task #5에서 처리).
     Compressed { obj_stm_num: u32, index: u32 },
 }
