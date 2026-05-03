@@ -1,7 +1,10 @@
-use rpdf_core::types::ObjectId;
-use rpdf_parser::{ParseError, find_eof, parse_header, parse_startxref, parse_trailer, parse_xref};
+use rpdf_core::types::{ObjectId, PdfObject, XrefEntry};
+use rpdf_parser::{
+    ParseError, find_eof, parse_header, parse_indirect_object, parse_startxref, parse_trailer,
+    parse_xref,
+};
 
-// ─── IT-1: 표준 PDF 1.4 — 4개 함수 전체 연동 ───────────────────────────────
+// ─── IT-1: 표준 PDF 1.4 — 4개 함수 전체 연동 + Catalog 파싱 ────────────────
 
 #[test]
 fn it1_standard_pdf_all_four_functions() {
@@ -40,6 +43,22 @@ fn it1_standard_pdf_all_four_functions() {
         parsed_xref.table.get(root_num).is_some(),
         "/Root 객체 {root_num}이 xref에 없음"
     );
+
+    // Catalog indirect object 파싱 및 검증
+    let root_id = parsed_xref.trailer.root;
+    let entry = parsed_xref.table.get(root_id.number).expect("root in xref");
+    let offset = match entry {
+        XrefEntry::InUse { offset, .. } => *offset as usize,
+        _ => panic!("root must be in-use"),
+    };
+    let (indirect, _) = parse_indirect_object(data, offset).unwrap();
+    assert_eq!(indirect.id, root_id);
+    let dict = indirect.object.as_dict().expect("catalog must be dict");
+    let type_value = dict.get(b"Type").expect("/Type key");
+    assert!(
+        matches!(type_value, PdfObject::Name(name) if name == b"Catalog"),
+        "/Type is not /Catalog: {type_value:?}"
+    );
 }
 
 // ─── IT-2: 헤더 오프셋 != 0 ──────────────────────────────────────────────────
@@ -63,7 +82,7 @@ fn it2_header_at_nonzero_offset() {
     ));
 }
 
-// ─── IT-3: 점진적 업데이트 — 마지막 trailer 사용 ─────────────────────────────
+// ─── IT-3: 점진적 업데이트 — 마지막 trailer 사용 + Catalog 파싱 ──────────────
 
 #[test]
 fn it3_incremental_update_uses_last_trailer() {
@@ -106,6 +125,22 @@ fn it3_incremental_update_uses_last_trailer() {
         parsed_xref.table.get(root_num).is_some(),
         "/Root 객체 {root_num}이 xref에 없음"
     );
+
+    // Catalog indirect object 파싱 및 검증
+    let root_id = parsed_xref.trailer.root;
+    let entry = parsed_xref.table.get(root_id.number).expect("root in xref");
+    let offset = match entry {
+        XrefEntry::InUse { offset, .. } => *offset as usize,
+        _ => panic!("root must be in-use"),
+    };
+    let (indirect, _) = parse_indirect_object(data, offset).unwrap();
+    assert_eq!(indirect.id, root_id);
+    let dict = indirect.object.as_dict().expect("catalog must be dict");
+    let type_value = dict.get(b"Type").expect("/Type key");
+    assert!(
+        matches!(type_value, PdfObject::Name(name) if name == b"Catalog"),
+        "/Type is not /Catalog: {type_value:?}"
+    );
 }
 
 // ─── IT-4: 파일 잘림 — MissingEof 반환 ──────────────────────────────────────
@@ -121,7 +156,7 @@ fn it4_truncated_file_returns_missing_eof() {
     ));
 }
 
-// ─── IT-5: /Info 필드 ObjectId 추출 ─────────────────────────────────────────
+// ─── IT-5: /Info 객체 파싱 + 메타데이터 문자열 검증 ──────────────────────────
 
 #[test]
 fn it5_info_object_id_extracted() {
@@ -129,7 +164,7 @@ fn it5_info_object_id_extracted() {
     // IT-1 과 동일 파일이지만, /Info 추출에만 초점을 맞춘 명시적 검증.
     //
     // 주의: ObjectId 추출만 확인. 실제 Info 딕셔너리의 제목/작성자 문자열 디코딩은
-    // Task #5 이후에서 다룬다 (UTF-16BE BOM 처리 필요).
+    // Task #7 이후에서 다룬다 (UTF-16BE BOM 처리 필요).
     let data = include_bytes!("../../../../examples/pdfjs-tracemonkey.pdf");
 
     let eof_offset = find_eof(data).unwrap();
@@ -145,11 +180,57 @@ fn it5_info_object_id_extracted() {
 
     let xref_offset = parse_startxref(data, eof_offset).unwrap();
     let parsed_xref = parse_xref(data, xref_offset).unwrap();
-    let info_num = parsed_xref.trailer.info.unwrap().number;
+    let info_id = parsed_xref.trailer.info.unwrap();
     assert!(
-        parsed_xref.table.get(info_num).is_some(),
-        "/Info 객체 {info_num}이 xref에 없음"
+        parsed_xref.table.get(info_id.number).is_some(),
+        "/Info 객체 {}이 xref에 없음",
+        info_id.number
     );
+
+    // Catalog indirect object 파싱
+    let root_id = parsed_xref.trailer.root;
+    let root_entry = parsed_xref.table.get(root_id.number).expect("root in xref");
+    let root_offset = match root_entry {
+        XrefEntry::InUse { offset, .. } => *offset as usize,
+        _ => panic!("root must be in-use"),
+    };
+    let (root_indirect, _) = parse_indirect_object(data, root_offset).unwrap();
+    assert_eq!(root_indirect.id, root_id);
+    let catalog = root_indirect
+        .object
+        .as_dict()
+        .expect("catalog must be dict");
+    let type_value = catalog.get(b"Type").expect("/Type key");
+    assert!(
+        matches!(type_value, PdfObject::Name(name) if name == b"Catalog"),
+        "/Type is not /Catalog: {type_value:?}"
+    );
+
+    // /Info indirect object 파싱 + 메타데이터 문자열 raw bytes 검증
+    let info_entry = parsed_xref.table.get(info_id.number).expect("info in xref");
+    let info_offset = match info_entry {
+        XrefEntry::InUse { offset, .. } => *offset as usize,
+        _ => panic!("info must be in-use"),
+    };
+    let (info_indirect, _) = parse_indirect_object(data, info_offset).unwrap();
+    assert_eq!(info_indirect.id, info_id);
+    let info_dict = info_indirect.object.as_dict().expect("info must be dict");
+
+    // /Producer 는 이 파일에 확실히 존재 (pdfTeX 생성). /Title·/Author 는 없어 가드 불필요.
+    // (인코딩 해석은 Task #7 영역 — raw bytes 형식 확인만 수행)
+    let producer = info_dict
+        .get(b"Producer")
+        .or_else(|| info_dict.get(b"Creator"))
+        .expect("/Producer 또는 /Creator가 Info dict에 없음");
+    assert!(
+        matches!(
+            producer,
+            PdfObject::LiteralString(_) | PdfObject::HexString(_)
+        ),
+        "/Producer 가 문자열이 아님: {producer:?}"
+    );
+    let bytes = producer.as_string_bytes().unwrap();
+    assert!(!bytes.is_empty(), "/Producer raw bytes가 비어있음");
 }
 
 // ─── IT-6: xref 스트림 PDF — parse_trailer·parse_xref 양쪽 모두 XrefStreamUnsupported ──
