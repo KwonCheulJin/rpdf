@@ -69,6 +69,22 @@ pub enum ParseError {
     #[error("trailer가 탐색 버퍼({limit_kb}KB)를 초과함")]
     TrailerTooLarge { limit_kb: usize },
 
+    /// 배열 또는 딕셔너리 중첩이 허용 깊이(`MAX_OBJECT_DEPTH`)를 초과함.
+    #[error("오프셋 {offset}에서 객체 중첩 깊이 초과: {max_depth}")]
+    ObjectTooDeep { offset: usize, max_depth: usize },
+
+    /// 객체 파싱 실패 (예: 예상치 못한 토큰, 잘못된 이름 이스케이프).
+    #[error("오프셋 {offset}에서 잘못된 객체: {reason:?}")]
+    InvalidObject { offset: usize, reason: String },
+
+    /// 스트림 구조 오류 (`stream` 키워드 없음, `endstream` 없음, `/Length` 없음 또는 간접 참조).
+    #[error("스트림 구조 오류 (오프셋 {offset}): {reason}")]
+    MalformedStream { offset: usize, reason: String },
+
+    /// `endobj` 키워드가 없음.
+    #[error("오프셋 {offset}에서 endobj 없음")]
+    MissingEndobj { offset: usize },
+
     /// 위 변형으로 분류되지 않는 형식 오류.
     #[error("예상치 못한 형식: {0}")]
     UnexpectedFormat(String),
