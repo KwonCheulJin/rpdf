@@ -20,9 +20,11 @@ fn parse_standard_xref_offset() {
     assert_eq!(parse_startxref(&data, eof_offset).unwrap(), 12345);
 }
 
+/// startxref 값이 0이면 Ok(0)을 반환한다.
+/// 오프셋 0이 의미적으로 유효한지(파일 앞에 xref가 있을 수 없음)는
+/// Task #3에서 검증한다. 여기서는 숫자 파싱만 책임진다.
 #[test]
-fn parse_xref_offset_zero() {
-    // xref 테이블이 파일 맨 앞에 있는 경우
+fn parse_xref_offset_of_zero_is_returned_as_is() {
     let (data, eof_offset) = make_pdf_with_startxref(0);
     assert_eq!(parse_startxref(&data, eof_offset).unwrap(), 0);
 }

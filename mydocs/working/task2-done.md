@@ -46,6 +46,18 @@
    - 이유: `SEARCH_WINDOW == DICT_MAX_BYTES`이면 `TrailerTooLarge` 에러가 도달 불가능 (dead code)
    - 해결: SEARCH_WINDOW를 DICT_MAX_BYTES의 2배로 설정
 
+3. **IT-1 사용 파일 변경: `fw4-2024.pdf` → `pdfjs-tracemonkey.pdf`**
+   - 이유: `fw4-2024.pdf`는 xref stream 방식(PDF 1.7)이라 IT-6 전용으로 배정.
+     IT-1(전체 연동 통합 테스트)에는 trailer 파싱이 가능한 `pdfjs-tracemonkey.pdf`(PDF 1.4) 사용
+
+4. **실제 테스트 수: 계획 30개 이상 → 실제 70개**
+   - 이유: 단위 테스트가 19개(trailer) + 18개(header) + 14개(eof) + 12개(startxref) = 63개로 계획 23개보다 많아짐
+   - 통합 테스트 6개 + proptest 1개로 총합 70개
+
+5. **`InvalidVersion` 에러 변형 필드 추가: `{ found }` → `{ offset, found }`**
+   - 이유: 헤더 오프셋이 0이 아닌 파일에서 잘못된 버전 위치를 즉시 파악하기 위해 `offset` 필드 추가
+   - 계획서에는 `found` 필드만 정의되어 있었음
+
 ## 발견된 이슈
 
 - xref stream 방식 PDF (PDF 1.5+, `fw4-2024.pdf` 등)는 현재 `XrefStreamUnsupported` 반환
