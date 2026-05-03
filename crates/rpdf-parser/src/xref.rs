@@ -4,7 +4,10 @@ use rpdf_core::types::{XrefEntry, XrefTable};
 
 use crate::error::ParseError;
 use crate::objects::{parse_dictionary, parse_u64_val, peek_str, skip_whitespace};
-use crate::trailer::{PdfTrailer, extract_trailer_fields, is_xref_stream};
+use crate::trailer::{
+    PdfTrailer, extract_trailer_fields, is_xref_stream as is_xref_stream_heuristic,
+};
+use crate::xref_stream::{is_xref_stream, parse_xref_stream};
 
 /// `parse_xref` 반환값: 병합된 xref 테이블, 권위 있는 trailer, 섹션 메타데이터.
 #[derive(Debug, Clone)]
@@ -27,6 +30,16 @@ pub struct ParsedXref {
 pub struct XrefSectionInfo {
     pub offset: u64,
     pub entry_count: usize,
+}
+
+/// `parse_xref_section` / `parse_xref_stream` 공통 반환 타입.
+///
+/// `parse_xref_chain`이 전통 xref 섹션과 xref 스트림을 동일하게 처리할 수 있도록
+/// 두 경로의 반환값을 통일한다 (Hybrid Chain 지원).
+pub(crate) struct XrefSectionResult {
+    pub entries: Vec<(u32, XrefEntry)>,
+    pub trailer: PdfTrailer,
+    pub section_info: XrefSectionInfo,
 }
 
 /// xref chain의 최대 허용 깊이.
@@ -54,6 +67,11 @@ pub fn parse_xref(data: &[u8], xref_offset: u64) -> Result<ParsedXref, ParseErro
 }
 
 /// `/Prev` chain 전체를 순회하며 xref 테이블을 병합한다.
+///
+/// Hybrid Chain: 각 섹션이 전통 xref 테이블이면 `parse_xref_section`,
+/// xref 스트림(PDF 1.5+)이면 `parse_xref_stream`으로 처리한다.
+/// 두 형식은 하나의 chain에 혼재할 수 있다 (ISO 32000 §7.5.8).
+/// visited / depth 검사는 스트림 / 전통 구분 없이 동일하게 적용된다.
 fn parse_xref_chain(data: &[u8], start_offset: u64) -> Result<ParsedXref, ParseError> {
     let mut table = XrefTable::new();
     let mut sections: Vec<XrefSectionInfo> = Vec::new();
@@ -81,14 +99,15 @@ fn parse_xref_chain(data: &[u8], start_offset: u64) -> Result<ParsedXref, ParseE
         visited.insert(current);
         depth += 1;
 
-        let (entries, section_trailer) = parse_xref_section(data, current)?;
-        let entry_count = entries.len();
-        sections.push(XrefSectionInfo {
-            offset: current,
-            entry_count,
-        });
+        // 파싱 기반 is_xref_stream으로 전통/스트림 분기
+        let result = if is_xref_stream(data, current) {
+            parse_xref_stream(data, current)?
+        } else {
+            parse_xref_section(data, current)?
+        };
+        sections.push(result.section_info);
 
-        for (obj_num, entry) in entries {
+        for (obj_num, entry) in result.entries {
             table.insert_if_absent(obj_num, entry);
         }
 
@@ -96,10 +115,10 @@ fn parse_xref_chain(data: &[u8], start_offset: u64) -> Result<ParsedXref, ParseE
         // 이전 섹션들의 trailer는 /Prev chain을 잇는 용도이며,
         // /Root, /Info 등 문서 수준 메타는 최신 trailer가 권위를 가진다.
         if first_trailer.is_none() {
-            first_trailer = Some(section_trailer.clone());
+            first_trailer = Some(result.trailer.clone());
         }
 
-        match section_trailer.prev {
+        match result.trailer.prev {
             Some(prev_offset) => current = prev_offset,
             None => break,
         }
@@ -114,11 +133,8 @@ fn parse_xref_chain(data: &[u8], start_offset: u64) -> Result<ParsedXref, ParseE
 
 /// 단일 xref 섹션(xref 키워드부터 trailer 딕셔너리까지)을 파싱한다.
 ///
-/// 반환: (객체번호 → XrefEntry 맵, trailer)
-fn parse_xref_section(
-    data: &[u8],
-    offset: u64,
-) -> Result<(Vec<(u32, XrefEntry)>, PdfTrailer), ParseError> {
+/// 반환: `XrefSectionResult` — `parse_xref_stream`과 동일 타입으로 Hybrid Chain 지원.
+fn parse_xref_section(data: &[u8], offset: u64) -> Result<XrefSectionResult, ParseError> {
     let file_size = data.len() as u64;
     if offset >= file_size {
         return Err(ParseError::XrefOffsetOutOfBounds { offset, file_size });
@@ -126,8 +142,8 @@ fn parse_xref_section(
 
     let start = offset as usize;
 
-    // xref 스트림 감지 (obj 패턴)
-    if is_xref_stream(data, offset) {
+    // xref 스트림 감지 (방어적 체크 — chain에서 먼저 분기하므로 실제 도달하지 않아야 함)
+    if is_xref_stream_heuristic(data, offset) {
         return Err(ParseError::XrefStreamUnsupported {
             xref_offset: offset,
         });
@@ -198,7 +214,15 @@ fn parse_xref_section(
     // "trailer" 키워드 다음 딕셔너리 파싱
     let trailer = parse_trailer_at(data, pos)?;
 
-    Ok((entries, trailer))
+    let entry_count = entries.len();
+    Ok(XrefSectionResult {
+        entries,
+        trailer,
+        section_info: XrefSectionInfo {
+            offset,
+            entry_count,
+        },
+    })
 }
 
 /// `data[pos..]`가 `"trailer"` 키워드로 시작한다고 가정하고 딕셔너리를 파싱한다.

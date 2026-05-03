@@ -7,6 +7,7 @@ mod objects;
 mod startxref;
 mod trailer;
 mod xref;
+mod xref_stream;
 
 pub use eof::find_eof;
 pub use error::ParseError;

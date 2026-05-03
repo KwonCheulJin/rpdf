@@ -233,29 +233,228 @@ fn it5_info_object_id_extracted() {
     assert!(!bytes.is_empty(), "/Producer raw bytes가 비어있음");
 }
 
-// ─── IT-6: xref 스트림 PDF — parse_trailer·parse_xref 양쪽 모두 XrefStreamUnsupported ──
+// ─── IT-6: xref 스트림 PDF — fw4-2024.pdf 전체 파이프라인 + Catalog 검증 ──────
 
 #[test]
-fn it6_xref_stream_returns_unsupported_error() {
-    // fw4-2024.pdf (PDF 1.7) 은 xref stream 방식을 사용한다.
-    // parse_trailer(역방향)와 parse_xref(순방향) 두 경로 모두 동일 에러를 반환해야 한다.
+fn it6_xref_stream_fw4_full_pipeline() {
+    // fw4-2024.pdf (PDF 1.7): xref stream 전용 PDF.
+    // parse_trailer는 XrefStreamUnsupported, parse_xref는 전체 chain 파싱 성공.
+    // Root(3540 0 R)는 InUse 엔트리, /Type /Catalog 확인.
     let data = include_bytes!("../../../../examples/fw4-2024.pdf");
 
     let eof_offset = find_eof(data).unwrap();
     let xref_offset = parse_startxref(data, eof_offset).unwrap();
 
+    // 역방향 탐색은 XrefStreamUnsupported 반환 (예상된 동작)
     assert!(
         matches!(
             parse_trailer(data, eof_offset).unwrap_err(),
-            ParseError::XrefStreamUnsupported { xref_offset: _ }
+            ParseError::XrefStreamUnsupported { .. }
         ),
         "parse_trailer가 XrefStreamUnsupported를 반환해야 함"
     );
+
+    // parse_xref: xref 스트림 chain 전체 파싱 성공
+    let parsed = parse_xref(data, xref_offset).unwrap();
+
+    assert!(!parsed.table.is_empty(), "xref 테이블이 비어있음");
+    // fw4-2024.pdf: 마지막 xref stream(208493) → /Prev 116 → 첫 xref stream
+    assert!(
+        parsed.sections.len() >= 2,
+        "/Prev chain이 있으므로 섹션 수 >= 2: got {}",
+        parsed.sections.len()
+    );
+
+    // Root(3540 0 R)가 InUse 엔트리이어야 함
+    let root_id = parsed.trailer.root;
+    let root_entry = parsed
+        .table
+        .get(root_id.number)
+        .expect("root가 xref 테이블에 없음");
+    let root_offset = match root_entry {
+        XrefEntry::InUse { offset, .. } => *offset as usize,
+        XrefEntry::Compressed { .. } => {
+            panic!("fw4-2024.pdf root는 InUse 엔트리여야 함 (Compressed가 아님)")
+        }
+        other => panic!("예상치 못한 root 엔트리 타입: {other:?}"),
+    };
+
+    // Catalog indirect object 파싱 및 /Type /Catalog 검증
+    let (root_indirect, _) = parse_indirect_object(data, root_offset).unwrap();
+    assert_eq!(root_indirect.id, root_id);
+    let dict = root_indirect
+        .object
+        .as_dict()
+        .expect("Catalog은 딕셔너리여야 함");
+    let type_val = dict.get(b"Type").expect("/Type 키 누락");
+    assert!(
+        matches!(type_val, PdfObject::Name(n) if n == b"Catalog"),
+        "/Type이 /Catalog가 아님: {type_val:?}"
+    );
+}
+
+// ─── IT-7: xref 스트림 PDF — irs-f1040.pdf 전체 파이프라인 ────────────────────
+
+#[test]
+fn it7_xref_stream_irs_f1040_full_pipeline() {
+    // irs-f1040.pdf (PDF 1.7): fw4-2024.pdf와 동일 생성기, 독립적 파일.
+    // Root(2399 0 R)는 InUse 엔트리, /Type /Catalog 확인.
+    let data = include_bytes!("../../../../examples/irs-f1040.pdf");
+
+    let eof_offset = find_eof(data).unwrap();
+    let xref_offset = parse_startxref(data, eof_offset).unwrap();
+
+    // 역방향 탐색은 XrefStreamUnsupported 반환 (예상된 동작)
     assert!(
         matches!(
-            parse_xref(data, xref_offset).unwrap_err(),
-            ParseError::XrefStreamUnsupported { xref_offset: _ }
+            parse_trailer(data, eof_offset).unwrap_err(),
+            ParseError::XrefStreamUnsupported { .. }
         ),
-        "parse_xref가 XrefStreamUnsupported를 반환해야 함"
+        "parse_trailer가 XrefStreamUnsupported를 반환해야 함"
+    );
+
+    // parse_xref: xref 스트림 chain 전체 파싱 성공
+    let parsed = parse_xref(data, xref_offset).unwrap();
+
+    assert!(!parsed.table.is_empty(), "xref 테이블이 비어있음");
+    assert!(
+        parsed.sections.len() >= 2,
+        "/Prev chain이 있으므로 섹션 수 >= 2: got {}",
+        parsed.sections.len()
+    );
+
+    // Root(2399 0 R)가 InUse 엔트리이어야 함
+    let root_id = parsed.trailer.root;
+    let root_entry = parsed
+        .table
+        .get(root_id.number)
+        .expect("root가 xref 테이블에 없음");
+    let root_offset = match root_entry {
+        XrefEntry::InUse { offset, .. } => *offset as usize,
+        XrefEntry::Compressed { .. } => {
+            panic!("irs-f1040.pdf root는 InUse 엔트리여야 함 (Compressed가 아님)")
+        }
+        other => panic!("예상치 못한 root 엔트리 타입: {other:?}"),
+    };
+
+    // Catalog indirect object 파싱 및 /Type /Catalog 검증
+    let (root_indirect, _) = parse_indirect_object(data, root_offset).unwrap();
+    assert_eq!(root_indirect.id, root_id);
+    let dict = root_indirect
+        .object
+        .as_dict()
+        .expect("Catalog은 딕셔너리여야 함");
+    let type_val = dict.get(b"Type").expect("/Type 키 누락");
+    assert!(
+        matches!(type_val, PdfObject::Name(n) if n == b"Catalog"),
+        "/Type이 /Catalog가 아님: {type_val:?}"
+    );
+}
+
+// ─── IT-8: hybrid chain — 전통 xref + xref 스트림 혼합 (합성) ──────────────────
+
+/// 합성 hybrid PDF를 생성한다.
+///
+/// 구조:
+/// - 베이스: obj 1(Catalog) + obj 2(Pages) + 전통 xref 섹션
+/// - 증분 업데이트: obj 3(xref 스트림) → /Prev로 베이스 xref 가리킴
+///
+/// parse_xref_chain이 스트림→전통 순서로 두 형식을 모두 처리하는지 검증한다.
+fn make_hybrid_pdf_for_it8() -> (Vec<u8>, u64) {
+    let mut buf: Vec<u8> = Vec::new();
+
+    buf.extend_from_slice(b"%PDF-1.5\n");
+
+    // obj 1: Catalog
+    let obj1_offset = buf.len();
+    buf.extend_from_slice(b"1 0 obj\n<</Type /Catalog /Pages 2 0 R>>\nendobj\n");
+
+    // obj 2: Pages
+    let obj2_offset = buf.len();
+    buf.extend_from_slice(b"2 0 obj\n<</Type /Pages /Kids [] /Count 0>>\nendobj\n");
+
+    // 전통 xref 섹션 (obj 0–2)
+    let xref_trad_offset = buf.len() as u64;
+    buf.extend_from_slice(b"xref\n0 3\n");
+    buf.extend_from_slice(b"0000000000 65535 f\r\n");
+    buf.extend_from_slice(format!("{:010} 00000 n\r\n", obj1_offset).as_bytes());
+    buf.extend_from_slice(format!("{:010} 00000 n\r\n", obj2_offset).as_bytes());
+    buf.extend_from_slice(b"trailer\n<</Size 3 /Root 1 0 R>>\n");
+    buf.extend_from_slice(format!("startxref\n{}\n%%EOF\n", xref_trad_offset).as_bytes());
+
+    // xref 스트림 (증분 업데이트): obj 3 자체를 참조하는 InUse 엔트리
+    // obj3_offset = 현재 buf.len() — 이 값이 스트림 바디에 들어간다.
+    let obj3_offset = buf.len() as u64;
+
+    // W=[1,4,1], Index=[3,1], no Filter — row_size=6, 1개 엔트리
+    let mut stream_body = vec![0u8; 6];
+    stream_body[0] = 1; // type = InUse
+    stream_body[1..5].copy_from_slice(&(obj3_offset as u32).to_be_bytes());
+    stream_body[5] = 0; // gen = 0
+
+    let dict = format!(
+        "3 0 obj\n<</Type /XRef /Size 4 /Root 1 0 R /Prev {} /W [1 4 1] /Index [3 1] /Length {}>>\nstream\n",
+        xref_trad_offset,
+        stream_body.len()
+    );
+    buf.extend_from_slice(dict.as_bytes());
+    buf.extend_from_slice(&stream_body);
+    buf.extend_from_slice(b"\nendstream\nendobj\n");
+    buf.extend_from_slice(format!("startxref\n{}\n%%EOF\n", obj3_offset).as_bytes());
+
+    (buf, obj3_offset)
+}
+
+#[test]
+fn it8_hybrid_chain_traditional_then_stream() {
+    // 합성 hybrid PDF: 전통 xref 섹션 위에 xref 스트림 증분 업데이트를 얹은 구조.
+    // parse_xref_chain이 스트림→전통 순서로 두 형식 모두를 처리하는지 검증한다.
+    let (data, xref_stream_offset) = make_hybrid_pdf_for_it8();
+
+    // find_eof + parse_startxref로 xref 스트림 오프셋 재확인
+    let eof_offset = find_eof(&data).unwrap();
+    let detected_offset = parse_startxref(&data, eof_offset).unwrap();
+    assert_eq!(
+        detected_offset, xref_stream_offset,
+        "parse_startxref가 마지막 startxref를 반환해야 함"
+    );
+
+    let parsed = parse_xref(&data, xref_stream_offset).unwrap();
+
+    // chain이 xref 스트림 + 전통 xref 두 섹션을 모두 순회했음
+    assert_eq!(
+        parsed.sections.len(),
+        2,
+        "hybrid chain은 정확히 2개 섹션: got {}",
+        parsed.sections.len()
+    );
+
+    // 두 섹션 오프셋 확인
+    assert_eq!(
+        parsed.sections[0].offset, xref_stream_offset,
+        "첫 섹션 = xref 스트림"
+    );
+
+    // obj 1, 2(전통 xref), obj 3(스트림)가 모두 테이블에 있어야 함
+    assert!(
+        matches!(parsed.table.get(1), Some(XrefEntry::InUse { .. })),
+        "obj 1이 InUse 엔트리여야 함"
+    );
+    assert!(
+        matches!(parsed.table.get(2), Some(XrefEntry::InUse { .. })),
+        "obj 2가 InUse 엔트리여야 함"
+    );
+    assert!(
+        matches!(parsed.table.get(3), Some(XrefEntry::InUse { .. })),
+        "obj 3(xref 스트림 자체)이 InUse 엔트리여야 함"
+    );
+
+    // trailer.root = 1 0 R (xref 스트림의 trailer가 권위 있는 소스)
+    assert_eq!(
+        parsed.trailer.root,
+        ObjectId {
+            number: 1,
+            generation: 0
+        }
     );
 }
