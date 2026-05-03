@@ -7,7 +7,9 @@
 use rpdf_core::types::PdfObject;
 
 use crate::ParseError;
-use crate::objects::{parse_indirect_object, parse_u64_val, skip_whitespace_and_comments};
+use crate::objects::{
+    parse_indirect_object, parse_object, parse_u64_val, skip_whitespace_and_comments,
+};
 use crate::xref_stream::decompress_flate;
 
 /// ObjStm 파싱 결과. 객체 번호 → `PdfObject` 매핑.
@@ -23,6 +25,9 @@ impl ParsedObjectStream {
     /// `obj_num`에 해당하는 `PdfObject`를 반환한다.
     ///
     /// 존재하지 않으면 `None`. `XrefTable::get()`과 일관된 시그니처.
+    ///
+    /// 동일 `obj_num`이 여러 번 등장하면 **첫 번째** 항목을 반환한다.
+    /// (ISO 32000 §7.3.7 "first occurrence" 정책과 일관.)
     ///
     /// **ObjStmObjNumMismatch 정책**: xref 번호와 헤더 번호가 다를 때 xref 우선 +
     /// `tracing::warn` 경고. `ObjStmObjNumMismatch` 에러 변형은 미발생이며
@@ -41,7 +46,7 @@ impl ParsedObjectStream {
 /// 반환된 `ParsedObjectStream.objects`는 `(obj_num, PdfObject)` 쌍 벡터.
 ///
 /// ISO 32000 §7.5.7
-#[allow(dead_code)] // Checkpoint C에서 호출됨
+#[allow(dead_code)] // IT-9/IT-10 통합 테스트 및 Task #8에서 호출됨
 pub(crate) fn parse_object_stream(
     data: &[u8],
     offset: u64,
@@ -131,10 +136,31 @@ pub(crate) fn parse_object_stream(
     };
 
     // e) 헤더 파싱: data[0..first]에서 N개 (obj_num, rel_offset) 쌍 추출
-    let _header_pairs = parse_objstm_header(&decompressed, n, first, offset)?;
+    let header_pairs = parse_objstm_header(&decompressed, n, first, offset)?;
 
-    // f) Placeholder — Checkpoint C에서 header_pairs로 본문 객체 추출
-    Ok(ParsedObjectStream { objects: vec![] })
+    // f) 본문 객체 추출: 각 (obj_num, rel_offset)에서 PdfObject 파싱
+    let mut objects = Vec::with_capacity(header_pairs.len());
+    for (i, (obj_num, rel_offset)) in header_pairs.into_iter().enumerate() {
+        let abs_offset = first + rel_offset as usize;
+        if abs_offset > decompressed.len() {
+            return Err(ParseError::MalformedObjStm {
+                offset,
+                reason: format!(
+                    "객체 {i} (obj#{obj_num}): rel_offset {rel_offset}이 본문 범위 초과 \
+                     (first={first}, data_len={})",
+                    decompressed.len()
+                ),
+            });
+        }
+        let (object, _) =
+            parse_object(&decompressed, abs_offset).map_err(|e| ParseError::MalformedObjStm {
+                offset,
+                reason: format!("객체 {i} (obj#{obj_num}) 파싱 실패: {e}"),
+            })?;
+        objects.push((obj_num, object));
+    }
+
+    Ok(ParsedObjectStream { objects })
 }
 
 /// ObjStm 헤더(`data[0..first]` 영역)에서 `n`개의 `(obj_num, rel_offset)` 쌍을 추출한다.
@@ -218,8 +244,38 @@ mod internal_tests {
         out
     }
 
+    /// ObjStm 스트림 본문 바이트를 만든다 (B/C/D 재사용).
+    ///
+    /// `objects`: `(obj_num, raw_bytes)` 슬라이스. 객체는 바이트 연속 배치.
+    /// 반환: `(payload_bytes, first)` — payload를 ObjStm body로 사용.
+    fn make_objstm_payload(objects: &[(u32, &[u8])]) -> (Vec<u8>, usize) {
+        // rel_offset 계산 (객체 연속 배치)
+        let mut current_rel = 0usize;
+        let mut rel_offsets = Vec::new();
+        for (_, bytes) in objects.iter() {
+            rel_offsets.push(current_rel);
+            current_rel += bytes.len();
+        }
+
+        // 헤더: "obj1 off1 obj2 off2 ...\n"
+        let mut hdr = String::new();
+        for (i, (obj_num, _)) in objects.iter().enumerate() {
+            if i > 0 {
+                hdr.push(' ');
+            }
+            hdr.push_str(&format!("{obj_num} {}", rel_offsets[i]));
+        }
+        hdr.push('\n');
+        let first = hdr.len();
+
+        let mut payload = hdr.into_bytes();
+        for (_, bytes) in objects.iter() {
+            payload.extend_from_slice(bytes);
+        }
+        (payload, first)
+    }
+
     /// `plain` 데이터를 zlib (FlateDecode) 형식으로 압축한다 (B/C/D 재사용).
-    #[allow(dead_code)] // Checkpoint C/D에서 사용됨
     fn make_zlib_compressed(plain: &[u8]) -> Vec<u8> {
         use flate2::Compression;
         use flate2::write::ZlibEncoder;
@@ -308,26 +364,27 @@ mod internal_tests {
         );
     }
 
-    // 8. /Filter 없음, 비압축 ObjStm → 헤더 파싱 성공
+    // 8. /Filter 없음, 비압축 ObjStm → 헤더 파싱 + 객체 추출 성공
     #[test]
     fn accepts_uncompressed_objstm() {
         // N=1, First=4: header="5 0\n", body_section="true"
         let body = b"5 0\ntrue";
         let data = make_objstm_indirect_object(12, 1, 4, None, None, body);
-        let result = parse_object_stream(&data, 0);
-        assert!(result.is_ok(), "expected Ok, got {result:?}");
-        assert_eq!(result.unwrap().objects.len(), 0); // C에서 객체 추출 전
+        let result = parse_object_stream(&data, 0).unwrap();
+        assert_eq!(result.objects.len(), 1);
+        assert_eq!(result.get(5), Some(&PdfObject::Boolean(true)));
     }
 
-    // 9. FlateDecode 압축 ObjStm → 헤더 파싱 성공
+    // 9. FlateDecode 압축 ObjStm → 헤더 파싱 + 객체 추출 성공
     #[test]
     fn accepts_flatedecode_objstm() {
         // N=1, First=4: header="5 0\n", body_section="true"
         let plain = b"5 0\ntrue";
         let compressed = make_zlib_compressed(plain);
         let data = make_objstm_indirect_object(12, 1, 4, Some("FlateDecode"), None, &compressed);
-        let result = parse_object_stream(&data, 0);
-        assert!(result.is_ok(), "expected Ok, got {result:?}");
+        let result = parse_object_stream(&data, 0).unwrap();
+        assert_eq!(result.objects.len(), 1);
+        assert_eq!(result.get(5), Some(&PdfObject::Boolean(true)));
     }
 
     // 10. /First가 압축 해제 데이터 길이 초과 → MalformedObjStm
@@ -349,5 +406,115 @@ mod internal_tests {
         let data = make_objstm_indirect_object(12, 0, 0, None, None, b"");
         let result = parse_object_stream(&data, 0).unwrap();
         assert!(result.objects.is_empty());
+    }
+
+    // ── C 단위 테스트 ────────────────────────────────────────────────────────────
+
+    // C-1. Dictionary 객체 추출
+    #[test]
+    fn extracts_dictionary_object() {
+        let (payload, first) = make_objstm_payload(&[(5, b"<< /Type /Catalog >>")]);
+        let data = make_objstm_indirect_object(12, 1, first, None, None, &payload);
+        let result = parse_object_stream(&data, 0).unwrap();
+        assert!(matches!(result.get(5), Some(PdfObject::Dictionary(_))));
+    }
+
+    // C-2. Integer 객체 추출
+    #[test]
+    fn extracts_integer_object() {
+        let (payload, first) = make_objstm_payload(&[(7, b"42")]);
+        let data = make_objstm_indirect_object(12, 1, first, None, None, &payload);
+        let result = parse_object_stream(&data, 0).unwrap();
+        assert_eq!(result.get(7), Some(&PdfObject::Integer(42)));
+    }
+
+    // C-3. Boolean 객체 추출
+    #[test]
+    fn extracts_boolean_object() {
+        let (payload, first) = make_objstm_payload(&[(8, b"true")]);
+        let data = make_objstm_indirect_object(12, 1, first, None, None, &payload);
+        let result = parse_object_stream(&data, 0).unwrap();
+        assert_eq!(result.get(8), Some(&PdfObject::Boolean(true)));
+    }
+
+    // C-4. Array 객체 추출
+    #[test]
+    fn extracts_array_object() {
+        let (payload, first) = make_objstm_payload(&[(9, b"[1 2 3]")]);
+        let data = make_objstm_indirect_object(12, 1, first, None, None, &payload);
+        let result = parse_object_stream(&data, 0).unwrap();
+        assert!(matches!(result.get(9), Some(PdfObject::Array(_))));
+    }
+
+    // C-5. 3개 객체 전부 get() 조회 가능, 순서 보존
+    #[test]
+    fn extracts_multiple_objects() {
+        let (payload, first) =
+            make_objstm_payload(&[(3, b"<< /Type /Catalog >>"), (17, b"42"), (25, b"true")]);
+        let data = make_objstm_indirect_object(12, 3, first, None, None, &payload);
+        let result = parse_object_stream(&data, 0).unwrap();
+        assert_eq!(result.objects.len(), 3);
+        assert!(matches!(result.get(3), Some(PdfObject::Dictionary(_))));
+        assert_eq!(result.get(17), Some(&PdfObject::Integer(42)));
+        assert_eq!(result.get(25), Some(&PdfObject::Boolean(true)));
+    }
+
+    // C-6. FlateDecode 압축 ObjStm — 전체 파이프라인
+    #[test]
+    fn flatedecoded_objstm_full_pipeline() {
+        let (plain, first) = make_objstm_payload(&[(3, b"99"), (7, b"false")]);
+        let compressed = make_zlib_compressed(&plain);
+        let data =
+            make_objstm_indirect_object(12, 2, first, Some("FlateDecode"), None, &compressed);
+        let result = parse_object_stream(&data, 0).unwrap();
+        assert_eq!(result.get(3), Some(&PdfObject::Integer(99)));
+        assert_eq!(result.get(7), Some(&PdfObject::Boolean(false)));
+    }
+
+    // C-7. 비압축 ObjStm 전체 파이프라인 (헤더+본문 통합)
+    #[test]
+    fn uncompressed_objstm_full_pipeline() {
+        let (payload, first) = make_objstm_payload(&[(10, b"[1 2 3]"), (20, b"null")]);
+        let data = make_objstm_indirect_object(12, 2, first, None, None, &payload);
+        let result = parse_object_stream(&data, 0).unwrap();
+        assert!(matches!(result.get(10), Some(PdfObject::Array(_))));
+        assert_eq!(result.get(20), Some(&PdfObject::Null));
+    }
+
+    // C-8. get()이 없는 obj_num에 None 반환
+    #[test]
+    fn get_returns_none_for_missing_obj_num() {
+        let (payload, first) = make_objstm_payload(&[(5, b"42")]);
+        let data = make_objstm_indirect_object(12, 1, first, None, None, &payload);
+        let result = parse_object_stream(&data, 0).unwrap();
+        assert_eq!(result.get(5), Some(&PdfObject::Integer(42)));
+        assert_eq!(result.get(99), None);
+    }
+
+    // C-9. 본문에 잘못된 객체 → MalformedObjStm
+    #[test]
+    fn rejects_object_parse_failure() {
+        // "@@@" — 유효하지 않은 PDF 토큰
+        let body = b"5 0\n@@@";
+        let data = make_objstm_indirect_object(12, 1, 4, None, None, body);
+        let err = parse_object_stream(&data, 0).unwrap_err();
+        assert!(
+            matches!(err, ParseError::MalformedObjStm { .. }),
+            "expected MalformedObjStm, got {err:?}"
+        );
+    }
+
+    // C-10. rel_offset이 본문 범위 초과 → MalformedObjStm
+    #[test]
+    fn rejects_rel_offset_out_of_bounds() {
+        // 헤더: "5 999\n" (First=6), 본문: "42" (2바이트)
+        // abs_offset = 6 + 999 = 1005 > 8(총 길이) → 범위 초과
+        let body = b"5 999\n42";
+        let data = make_objstm_indirect_object(12, 1, 6, None, None, body);
+        let err = parse_object_stream(&data, 0).unwrap_err();
+        assert!(
+            matches!(err, ParseError::MalformedObjStm { .. }),
+            "expected MalformedObjStm, got {err:?}"
+        );
     }
 }
