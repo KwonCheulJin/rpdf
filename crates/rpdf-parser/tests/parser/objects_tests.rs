@@ -1,5 +1,5 @@
-use rpdf_core::types::{ObjectId, PdfDict, PdfObject};
-use rpdf_parser::{ParseError, parse_object};
+use rpdf_core::types::{ObjectId, PdfDict, PdfObject, PdfStream};
+use rpdf_parser::{ParseError, parse_indirect_object, parse_object};
 
 // 내부 함수 테스트를 위해 crate 내부 직접 접근이 필요하므로
 // 아래는 rpdf_parser의 pub(crate) 함수를 통합 테스트에서 직접 접근할 수 없다.
@@ -520,4 +520,175 @@ fn parse_array_depth_51_returns_too_deep() {
         parse_object(input.as_bytes(), 0).unwrap_err(),
         ParseError::ObjectTooDeep { .. }
     ));
+}
+
+// ─── parse_stream (parse_object를 통한 간접 검증) ─────────────────────────────
+
+#[test]
+fn parse_stream_normal() {
+    // 정상 스트림: Length=5, 데이터="Hello"
+    let data = b"<</Length 5>>\nstream\nHello\nendstream";
+    let (obj, consumed) = parse_object(data, 0).unwrap();
+    match obj {
+        PdfObject::Stream(PdfStream { dict, data: raw }) => {
+            assert_eq!(dict.get(b"Length"), Some(&PdfObject::Integer(5)));
+            assert_eq!(raw, b"Hello");
+        }
+        _ => panic!("Expected Stream, got {obj:?}"),
+    }
+    assert_eq!(consumed, data.len());
+}
+
+#[test]
+fn parse_stream_length_zero() {
+    // Length=0 → 빈 스트림
+    let data = b"<</Length 0>>\nstream\nendstream";
+    let (obj, _) = parse_object(data, 0).unwrap();
+    match obj {
+        PdfObject::Stream(PdfStream { data: raw, .. }) => {
+            assert!(raw.is_empty());
+        }
+        _ => panic!("Expected Stream"),
+    }
+}
+
+#[test]
+fn parse_stream_missing_length_returns_error() {
+    let data = b"<<>>\nstream\nhello\nendstream";
+    assert!(matches!(
+        parse_object(data, 0).unwrap_err(),
+        ParseError::MalformedStream { .. }
+    ));
+}
+
+#[test]
+fn parse_stream_negative_length_returns_error() {
+    let data = b"<</Length -1>>\nstream\nhello\nendstream";
+    assert!(matches!(
+        parse_object(data, 0).unwrap_err(),
+        ParseError::MalformedStream { .. }
+    ));
+}
+
+#[test]
+fn parse_stream_non_integer_length_returns_error() {
+    let data = b"<</Length (foo)>>\nstream\nhello\nendstream";
+    assert!(matches!(
+        parse_object(data, 0).unwrap_err(),
+        ParseError::MalformedStream { .. }
+    ));
+}
+
+#[test]
+fn parse_stream_crlf_eol_succeeds() {
+    // stream 키워드 후 \r\n 허용
+    let data = b"<</Length 5>>\nstream\r\nHello\nendstream";
+    let (obj, _) = parse_object(data, 0).unwrap();
+    match obj {
+        PdfObject::Stream(PdfStream { data: raw, .. }) => {
+            assert_eq!(raw, b"Hello");
+        }
+        _ => panic!("Expected Stream"),
+    }
+}
+
+#[test]
+fn parse_stream_lone_cr_eol_returns_error() {
+    // stream 키워드 후 \r 단독 → MalformedStream
+    let data = b"<</Length 5>>\nstream\rHello\nendstream";
+    assert!(matches!(
+        parse_object(data, 0).unwrap_err(),
+        ParseError::MalformedStream { .. }
+    ));
+}
+
+#[test]
+fn parse_stream_missing_endstream_returns_error() {
+    let data = b"<</Length 5>>\nstream\nHello\n";
+    assert!(matches!(
+        parse_object(data, 0).unwrap_err(),
+        ParseError::MalformedStream { .. }
+    ));
+}
+
+// ─── parse_indirect_object ───────────────────────────────────────────────────
+
+#[test]
+fn parse_indirect_object_normal() {
+    let data = b"1 0 obj\ntrue\nendobj";
+    let (indirect, consumed) = parse_indirect_object(data, 0).unwrap();
+    assert_eq!(indirect.id.number, 1);
+    assert_eq!(indirect.id.generation, 0);
+    assert_eq!(indirect.object, PdfObject::Boolean(true));
+    assert_eq!(consumed, data.len());
+}
+
+#[test]
+fn parse_indirect_object_generation_max() {
+    // generation 65535 (u16::MAX) 허용
+    let data = b"1 65535 obj\nnull\nendobj";
+    let (indirect, _) = parse_indirect_object(data, 0).unwrap();
+    assert_eq!(indirect.id.generation, 65535);
+    assert_eq!(indirect.object, PdfObject::Null);
+}
+
+#[test]
+fn parse_indirect_object_number_zero() {
+    // 객체 번호 0 허용 (free 객체 체인의 head)
+    let data = b"0 0 obj\n42\nendobj";
+    let (indirect, _) = parse_indirect_object(data, 0).unwrap();
+    assert_eq!(indirect.id.number, 0);
+    assert_eq!(indirect.object, PdfObject::Integer(42));
+}
+
+#[test]
+fn parse_indirect_object_number_u32_max() {
+    // u32::MAX (4294967295) 허용
+    let data = b"4294967295 0 obj\nnull\nendobj";
+    let (indirect, _) = parse_indirect_object(data, 0).unwrap();
+    assert_eq!(indirect.id.number, u32::MAX);
+}
+
+#[test]
+fn parse_indirect_object_number_exceeds_u32_returns_error() {
+    // u32::MAX + 1 → InvalidObject
+    let data = b"4294967296 0 obj\nnull\nendobj";
+    assert!(matches!(
+        parse_indirect_object(data, 0).unwrap_err(),
+        ParseError::InvalidObject { .. }
+    ));
+}
+
+#[test]
+fn parse_indirect_object_generation_exceeds_u16_returns_error() {
+    // u16::MAX + 1 → InvalidObject
+    let data = b"1 65536 obj\nnull\nendobj";
+    assert!(matches!(
+        parse_indirect_object(data, 0).unwrap_err(),
+        ParseError::InvalidObject { .. }
+    ));
+}
+
+#[test]
+fn parse_indirect_object_missing_endobj_returns_error() {
+    let data = b"1 0 obj\ntrue\n";
+    assert!(matches!(
+        parse_indirect_object(data, 0).unwrap_err(),
+        ParseError::MissingEndobj { .. }
+    ));
+}
+
+#[test]
+fn parse_indirect_object_with_stream() {
+    // 내부 객체가 스트림인 간접 객체
+    let data = b"1 0 obj\n<</Length 5>>\nstream\nHello\nendstream\nendobj";
+    let (indirect, consumed) = parse_indirect_object(data, 0).unwrap();
+    assert_eq!(indirect.id.number, 1);
+    match indirect.object {
+        PdfObject::Stream(PdfStream { data: raw, .. }) => {
+            assert_eq!(raw, b"Hello");
+        }
+        _ => panic!("Expected Stream inside IndirectObject"),
+    }
+    assert_eq!(consumed, data.len());
 }

@@ -688,15 +688,29 @@ pub(crate) fn parse_object_with_depth(
             (PdfObject::LiteralString(bytes), c)
         }
         b'<' if data.get(pos + 1) == Some(&b'<') => {
-            // Dictionary
+            // Dictionary or Stream
             if depth >= MAX_OBJECT_DEPTH {
                 return Err(ParseError::ObjectTooDeep {
                     offset: pos,
                     max_depth: MAX_OBJECT_DEPTH,
                 });
             }
-            let (dict, c) = parse_dictionary(data, pos, depth + 1)?;
-            (PdfObject::Dictionary(dict), c)
+            let (dict, dict_c) = parse_dictionary(data, pos, depth + 1)?;
+
+            // Lookahead: dict 뒤에 "stream" 키워드가 오면 스트림 파싱으로 전환
+            let after_dict = pos + dict_c;
+            let stream_pos = skip_whitespace_and_comments(data, after_dict);
+            let stream_ws = stream_pos - after_dict;
+
+            if data
+                .get(stream_pos..)
+                .is_some_and(|s| s.starts_with(b"stream"))
+            {
+                let (stream_obj, stream_c) = parse_stream(data, stream_pos, dict)?;
+                (PdfObject::Stream(stream_obj), dict_c + stream_ws + stream_c)
+            } else {
+                (PdfObject::Dictionary(dict), dict_c)
+            }
         }
         b'<' => {
             let (bytes, c) = parse_hex_string(data, pos)?;
@@ -742,8 +756,8 @@ pub(crate) fn parse_object_with_depth(
 
 /// `data[offset..]`에서 PDF 객체 하나를 파싱한다.
 ///
-/// **Checkpoint C 구현**: Boolean, Null, Integer, Real, LiteralString, HexString,
-/// Name, Reference, Array, Dictionary 지원.
+/// **Checkpoint D 구현**: Boolean, Null, Integer, Real, LiteralString, HexString,
+/// Name, Reference, Array, Dictionary, Stream 지원.
 ///
 /// 선행 화이트스페이스와 주석은 자동으로 건너뛴다.
 ///
@@ -756,44 +770,264 @@ pub(crate) fn parse_object_with_depth(
 ///
 /// - [`ParseError::InvalidObject`] — 예상치 못한 토큰
 /// - [`ParseError::ObjectTooDeep`] — 중첩 깊이 초과
-/// - [`ParseError::MalformedStream`] — 스트림 구조 오류 (D에서 활성화)
+/// - [`ParseError::MalformedStream`] — 스트림 구조 오류
 pub fn parse_object(data: &[u8], offset: usize) -> Result<(PdfObject, usize), ParseError> {
     parse_object_with_depth(data, offset, 0)
+}
+
+/// `data[offset..]`에서 PDF 스트림 `stream ... endstream` 부분을 파싱한다.
+///
+/// `offset`은 `stream` 키워드 첫 바이트를 가리킨다. 딕셔너리는 호출자가
+/// 이미 파싱해 `dict`로 전달한다.
+///
+/// - `stream` 키워드 뒤 EOL: `\n` 또는 `\r\n` 만 허용 (`\r` 단독 불허). ISO 32000 §7.3.8
+/// - `/Length` 누락·비정수·음수·간접 참조 → `MalformedStream`
+/// - 필터 디코딩은 Task #5에서 처리. raw bytes만 반환.
+/// - `endstream` 전 선택적 공백은 스킵 (스펙 §7.3.8 "should be an end-of-line … before endstream")
+///
+/// ISO 32000-1 §7.3.8
+pub(crate) fn parse_stream(
+    data: &[u8],
+    offset: usize,
+    dict: PdfDict,
+) -> Result<(PdfStream, usize), ParseError> {
+    // "stream" 키워드 확인
+    if !data[offset..].starts_with(b"stream") {
+        return Err(ParseError::MalformedStream {
+            offset,
+            reason: format!(
+                "expected 'stream' keyword, found {:?}",
+                peek_str(&data[offset..], 8)
+            ),
+        });
+    }
+    let after_kw = offset + 6; // "stream" 다음
+
+    // EOL: \n 또는 \r\n. \r 단독 불허. (ISO 32000 §7.3.8)
+    let eol_len = match data.get(after_kw) {
+        Some(b'\n') => 1,
+        Some(b'\r') if data.get(after_kw + 1) == Some(&b'\n') => 2,
+        Some(b'\r') => {
+            return Err(ParseError::MalformedStream {
+                offset: after_kw,
+                reason: "stream keyword followed by CR alone (must be LF or CRLF)".to_string(),
+            });
+        }
+        _ => {
+            return Err(ParseError::MalformedStream {
+                offset: after_kw,
+                reason: "stream keyword not followed by EOL (LF or CRLF required)".to_string(),
+            });
+        }
+    };
+
+    let stream_start = after_kw + eol_len;
+
+    // /Length 키 조회 — get()은 첫 번째 값 반환 (ISO 32000 §7.3.7 스펙 권장)
+    let length: usize = match dict.get(b"Length") {
+        None => {
+            return Err(ParseError::MalformedStream {
+                offset,
+                reason: "missing /Length in stream dictionary".to_string(),
+            });
+        }
+        Some(PdfObject::Integer(n)) if *n >= 0 => *n as usize,
+        Some(PdfObject::Integer(_)) => {
+            return Err(ParseError::MalformedStream {
+                offset,
+                reason: "/Length is negative".to_string(),
+            });
+        }
+        Some(PdfObject::Reference(_)) => {
+            return Err(ParseError::MalformedStream {
+                offset,
+                reason: "/Length is an indirect reference (not yet supported; Task #7)".to_string(),
+            });
+        }
+        Some(_) => {
+            return Err(ParseError::MalformedStream {
+                offset,
+                reason: "/Length is not an integer".to_string(),
+            });
+        }
+    };
+
+    // raw bytes 추출
+    let stream_end = stream_start + length;
+    if stream_end > data.len() {
+        return Err(ParseError::MalformedStream {
+            offset,
+            reason: format!(
+                "/Length {length} exceeds available data ({})",
+                data.len() - stream_start
+            ),
+        });
+    }
+    let raw_data = data[stream_start..stream_end].to_vec();
+
+    // "endstream" 앞 선택적 공백 스킵 (spec: "should be an end-of-line … before endstream")
+    let mut pos = stream_end;
+    while pos < data.len() && matches!(data[pos], b'\n' | b'\r' | b' ' | b'\t') {
+        pos += 1;
+    }
+
+    // "endstream" 키워드 확인
+    if !data[pos..].starts_with(b"endstream") {
+        return Err(ParseError::MalformedStream {
+            offset: pos,
+            reason: "missing endstream keyword".to_string(),
+        });
+    }
+    pos += 9; // "endstream"
+
+    Ok((
+        PdfStream {
+            dict,
+            data: raw_data,
+        },
+        pos - offset,
+    ))
 }
 
 /// `data[offset..]`에서 간접 객체 `N G obj ... endobj`를 파싱한다.
 ///
 /// `XrefEntry::InUse { offset, .. }`의 `offset`을 `as usize`로 변환하여 넘긴다.
 ///
-/// # 반환
+/// # 범위 검사
 ///
-/// `Ok((indirect_object, consumed))` — `consumed`는 `offset`부터 소비된 바이트 수.
+/// - 객체 번호: u32 범위 초과 → [`ParseError::InvalidObject`]
+///   (try_parse_reference와 달리 폴백 없음 — 헤더 컨텍스트에서는 명백한 오류)
+/// - 세대 번호: u16 범위 초과 → [`ParseError::InvalidObject`]
 ///
 /// # 에러
 ///
 /// - [`ParseError::InvalidObject`] — `N G obj` 구조 파싱 실패
 /// - [`ParseError::MissingEndobj`] — `endobj` 키워드 없음
 /// - `parse_object`의 에러 전파
+///
+/// ISO 32000-1 §7.3.10
 pub fn parse_indirect_object(
-    _data: &[u8],
-    _offset: usize,
+    data: &[u8],
+    offset: usize,
 ) -> Result<(IndirectObject, usize), ParseError> {
-    todo!("Checkpoint D에서 구현")
-}
+    let mut cur = skip_whitespace_and_comments(data, offset);
 
-// ─── Stream 파싱 (Checkpoint D) ──────────────────────────────────────────────
+    // 객체 번호 (u32)
+    if cur >= data.len() || !data[cur].is_ascii_digit() {
+        return Err(ParseError::InvalidObject {
+            offset: cur,
+            reason: format!(
+                "expected object number, found {:?}",
+                peek_str(&data[cur..], 8)
+            ),
+        });
+    }
+    let num_start = cur;
+    while cur < data.len() && data[cur].is_ascii_digit() {
+        cur += 1;
+    }
+    let number_u64 = std::str::from_utf8(&data[num_start..cur])
+        .unwrap()
+        .parse::<u64>()
+        .map_err(|_| ParseError::InvalidObject {
+            offset: num_start,
+            reason: "object number overflow".to_string(),
+        })?;
+    if number_u64 > u32::MAX as u64 {
+        return Err(ParseError::InvalidObject {
+            offset: num_start,
+            reason: format!("object number {number_u64} exceeds u32::MAX"),
+        });
+    }
+    let number = number_u64 as u32;
 
-/// `data[offset..]`에서 PDF 스트림 `<< ... >> stream ... endstream` 을 파싱한다.
-///
-/// 딕셔너리 파싱 후 `stream` 키워드가 이어지면 raw bytes를 읽는다.
-/// 필터 디코딩은 Task #5에서 처리.
-///
-/// ISO 32000-1 §7.3.8
-#[expect(dead_code, reason = "Checkpoint D에서 parse_object 분기에 연결")]
-pub(crate) fn parse_stream(
-    _data: &[u8],
-    _offset: usize,
-    _dict: PdfDict,
-) -> Result<(PdfStream, usize), ParseError> {
-    todo!("Checkpoint D에서 구현")
+    // 화이트스페이스 필수
+    if cur >= data.len() || !is_whitespace(data[cur]) {
+        return Err(ParseError::InvalidObject {
+            offset: cur,
+            reason: "expected whitespace after object number".to_string(),
+        });
+    }
+    cur = skip_whitespace_and_comments(data, cur);
+
+    // 세대 번호 (u16)
+    if cur >= data.len() || !data[cur].is_ascii_digit() {
+        return Err(ParseError::InvalidObject {
+            offset: cur,
+            reason: format!(
+                "expected generation number, found {:?}",
+                peek_str(&data[cur..], 8)
+            ),
+        });
+    }
+    let gen_start = cur;
+    while cur < data.len() && data[cur].is_ascii_digit() {
+        cur += 1;
+    }
+    let generation_u64 = std::str::from_utf8(&data[gen_start..cur])
+        .unwrap()
+        .parse::<u64>()
+        .map_err(|_| ParseError::InvalidObject {
+            offset: gen_start,
+            reason: "generation number overflow".to_string(),
+        })?;
+    if generation_u64 > u16::MAX as u64 {
+        return Err(ParseError::InvalidObject {
+            offset: gen_start,
+            reason: format!("generation number {generation_u64} exceeds u16::MAX"),
+        });
+    }
+    let generation = generation_u64 as u16;
+
+    // 화이트스페이스 필수
+    if cur >= data.len() || !is_whitespace(data[cur]) {
+        return Err(ParseError::InvalidObject {
+            offset: cur,
+            reason: "expected whitespace after generation number".to_string(),
+        });
+    }
+    cur = skip_whitespace_and_comments(data, cur);
+
+    // "obj" 키워드
+    if !data[cur..].starts_with(b"obj") {
+        return Err(ParseError::InvalidObject {
+            offset: cur,
+            reason: format!(
+                "expected 'obj' keyword, found {:?}",
+                peek_str(&data[cur..], 8)
+            ),
+        });
+    }
+    cur += 3;
+    // "obj" 다음이 이름 문자이면 다른 토큰 (예: "objFoo")
+    if cur < data.len() && is_name_char(data[cur]) {
+        return Err(ParseError::InvalidObject {
+            offset: cur - 3,
+            reason: format!(
+                "'obj' followed by name char: {:?}",
+                peek_str(&data[cur..], 4)
+            ),
+        });
+    }
+
+    // 객체 값 파싱
+    let (object, obj_c) = parse_object_with_depth(data, cur, 0)?;
+    cur += obj_c;
+
+    // 화이트스페이스 건너뜀
+    cur = skip_whitespace_and_comments(data, cur);
+
+    // "endobj" 키워드
+    if !data[cur..].starts_with(b"endobj") {
+        return Err(ParseError::MissingEndobj { offset: cur });
+    }
+    cur += 6;
+
+    Ok((
+        IndirectObject {
+            id: ObjectId { number, generation },
+            object,
+        },
+        cur - offset,
+    ))
 }
