@@ -58,7 +58,7 @@ XrefEntry::Compressed { obj_stm_num: 12, index: 2 }
 → 반환된 PdfObject 확인 (obj_num 일치 검증)
 ```
 
-`index`는 헤더 쌍의 0-based 순서. 검증: 헤더의 `obj_num`이 XrefTable의 키와 일치해야 함.
+`index`는 헤더 쌍의 0-based 순서. 검증: 헤더의 `obj_num`이 XrefTable의 키와 다른 경우 **xref 우선 + `tracing::warn` 경고** — 손상 PDF 호환을 위해 엄격 거부 없이 로그만 남긴다.
 
 ---
 
@@ -70,7 +70,7 @@ XrefEntry::Compressed { obj_stm_num: 12, index: 2 }
 - FlateDecode 압축 해제 (`decompress_flate` 재사용)
 - 헤더(`2N` 정수 쌍) 파싱
 - 본문 객체 추출 (`parse_object` 재사용)
-- `resolve_compressed_entry(stream, obj_num)` — Compressed 엔트리 해소 API
+- `ParsedObjectStream::get(obj_num)` 메서드 — Compressed 엔트리 해소 API
 - 통합 테스트: root가 `Compressed` 엔트리인 실제 PDF 또는 합성 PDF
 
 ### 제외
@@ -114,6 +114,9 @@ ObjStmExtendsUnsupported { offset: u64 },
 InvalidObjStmFilter { offset: u64, filter: String },
 
 /// 헤더의 obj_num이 XrefTable의 키와 불일치.
+///
+/// **현재 정책**: 발생시키지 않음 — xref 우선 + `tracing::warn` 로그.
+/// 향후 strict 모드 옵션 도입 시 활용 예약.
 #[error("객체 스트림 헤더 번호 불일치: 헤더={header_num}, xref={xref_num}")]
 ObjStmObjNumMismatch { header_num: u32, xref_num: u32 },
 ```
@@ -134,20 +137,24 @@ pub(crate) fn parse_object_stream(
     offset: u64,
 ) -> Result<ParsedObjectStream, ParseError>
 
-/// Compressed 엔트리의 obj_num으로 PdfObject를 찾는다.
-///
-/// `obj_num`이 stream에 없으면 `None` 반환.
-pub(crate) fn resolve_compressed_entry(
-    stream: &ParsedObjectStream,
-    obj_num: u32,
-) -> Option<&PdfObject>
+impl ParsedObjectStream {
+    /// Compressed 엔트리의 obj_num으로 PdfObject를 찾는다.
+    ///
+    /// `obj_num`이 stream에 없으면 `None` 반환.
+    /// XrefTable::get()과 일관된 시그니처.
+    pub fn get(&self, obj_num: u32) -> Option<&PdfObject> {
+        self.objects.iter()
+            .find(|(num, _)| *num == obj_num)
+            .map(|(_, obj)| obj)
+    }
+}
 ```
 
 ### `lib.rs` 공개 사항
 
 ```rust
 pub use object_stream::ParsedObjectStream;
-pub(crate) use object_stream::{parse_object_stream, resolve_compressed_entry};
+pub(crate) use object_stream::parse_object_stream;
 ```
 
 ---
@@ -159,7 +166,7 @@ pub(crate) use object_stream::{parse_object_stream, resolve_compressed_entry};
 1. `crates/rpdf-parser/src/object_stream.rs` 생성
    - `ParsedObjectStream` 구조체
    - `parse_object_stream` 시그니처 (`todo!()`)
-   - `resolve_compressed_entry` 시그니처 (`todo!()`)
+   - `ParsedObjectStream::get()` 메서드 구현
 2. `error.rs`에 에러 변형 4개 추가
 3. `lib.rs`에 `mod object_stream` + 공개 사항 추가
 4. `cargo build` 통과 확인
@@ -180,6 +187,8 @@ pub(crate) use object_stream::{parse_object_stream, resolve_compressed_entry};
    - `/Filter` 없으면 raw 그대로
 5. 헤더 파싱: `0..First` 영역에서 `2N`개 정수 추출 → `Vec<(u32, u64)>`
    - 정수 파싱 실패 또는 개수 불일치 → `MalformedObjStm`
+   - 정수 사이 구분자: 화이트스페이스 (PDF §7.2.3) — `' '`, `'\t'`, `'\n'`, `'\r'`, `'\x0C'`, `'\0'`
+   - `skip_whitespace_and_comments` 활용 권장 (% 주석 스킵 포함)
 
 체크포인트 B 테스트 (~8개):
 - `/N` + `/First` 파싱 성공
@@ -234,7 +243,7 @@ pub(crate) use object_stream::{parse_object_stream, resolve_compressed_entry};
 | `/Filter` 없음 | 비압축 — raw 그대로 사용 |
 | `/N = 0` | 빈 ObjStm 허용, 빈 `objects` 반환 |
 | `rel_offset` 가 `First`보다 큰 경우 | `MalformedObjStm` |
-| `obj_num`이 xref table 키와 다른 경우 | 로깅 후 허용 (스펙은 일치 요구하지만 손상 PDF 대비) |
+| `obj_num`이 xref table 키와 다른 경우 | **xref 우선** + `tracing::warn` 경고. `ObjStmObjNumMismatch` 변형 유지(미발생) — 향후 strict 모드 예약. |
 | `/Extends` 존재 | `ObjStmExtendsUnsupported` — 명시적 거부 |
 | 헤더 파싱 중 음수 offset | `MalformedObjStm` |
 
@@ -257,7 +266,7 @@ pub(crate) use object_stream::{parse_object_stream, resolve_compressed_entry};
 | ID | 내용 | 방식 |
 |----|------|------|
 | IT-9 | Compressed 엔트리 → ObjStm 추출 → PdfObject 검증 | 합성 PDF |
-| IT-10 | 실제 PDF 1.5+ (가능하면) | 실제 파일 |
+| IT-10 | 실제 PDF (D 단계 진입 시 examples/ Compressed 엔트리 존재 확인 후 결정) | 실제 파일 또는 합성 |
 
 ---
 
