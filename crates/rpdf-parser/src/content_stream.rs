@@ -71,7 +71,7 @@ pub fn parse_content_stream(data: &[u8]) -> Result<Vec<ContentStreamOperation>, 
     let mut pos = 0;
 
     loop {
-        // BI 특수 처리: 인라인 이미지 (D-1에서 구현)
+        // BI 특수 처리: 인라인 이미지
         let ws_pos = skip_whitespace_and_comments(data, pos);
         if ws_pos < data.len()
             && data[ws_pos..].starts_with(b"BI")
@@ -80,11 +80,11 @@ pub fn parse_content_stream(data: &[u8]) -> Result<Vec<ContentStreamOperation>, 
                 .map(|&b| !is_keyword_char(b))
                 .unwrap_or(true)
         {
-            // D-1 이전까지 BI를 만나면 임시로 에러
-            return Err(ParseError::MalformedContentStream {
-                offset: ws_pos,
-                reason: "인라인 이미지(BI)는 Checkpoint D-1 이후 지원".to_string(),
-            });
+            let (op, next_pos) = parse_inline_image(data, ws_pos)?;
+            ops.push(op);
+            operands.clear(); // BI 앞에 쌓인 피연산자는 무시 (스펙상 없어야 함)
+            pos = next_pos;
+            continue;
         }
 
         match next_token(data, pos)? {
@@ -94,6 +94,8 @@ pub fn parse_content_stream(data: &[u8]) -> Result<Vec<ContentStreamOperation>, 
                 pos = next_pos;
             }
             Some((Token::Keyword(keyword), next_pos)) => {
+                // keyword_start = next_pos - keyword.len() (next_token이 keyword 끝 위치 반환)
+                let keyword_start = next_pos - keyword.len();
                 pos = next_pos;
                 let operator = keyword_to_operator(&keyword);
 
@@ -103,8 +105,7 @@ pub fn parse_content_stream(data: &[u8]) -> Result<Vec<ContentStreamOperation>, 
                     ContentStreamOperator::RestoreState => {
                         if depth == 0 {
                             return Err(ParseError::UnbalancedGraphicsState {
-                                offset: skip_whitespace_and_comments(data, pos)
-                                    .saturating_sub(keyword.len()),
+                                offset: keyword_start,
                                 depth: -1,
                             });
                         }
@@ -130,6 +131,114 @@ pub fn parse_content_stream(data: &[u8]) -> Result<Vec<ContentStreamOperation>, 
     }
 
     Ok(ops)
+}
+
+/// `data[bi_offset..]`에서 인라인 이미지 `BI...ID...EI`를 파싱한다.
+///
+/// `bi_offset`은 `BI` 키워드의 시작 위치.
+///
+/// 구조:
+/// - `BI` 키워드
+/// - 0개 이상의 key(Name) + value(PdfObject) 쌍
+/// - `ID` 키워드 + 공백 1바이트
+/// - raw image bytes
+/// - 공백 1바이트 + `EI` 키워드
+///
+/// ISO 32000-1 §8.9.7
+fn parse_inline_image(
+    data: &[u8],
+    bi_offset: usize,
+) -> Result<(ContentStreamOperation, usize), ParseError> {
+    // BI 키워드 스킵 (bi_offset 이미 'B' 위치)
+    let mut pos = bi_offset + 2; // "BI" 다음
+
+    // key-value 쌍 파싱: Name + PdfObject 반복, ID 키워드 만날 때까지
+    let mut dict_operands: Vec<PdfObject> = Vec::new();
+    loop {
+        let ws_pos = skip_whitespace_and_comments(data, pos);
+        if ws_pos >= data.len() {
+            return Err(ParseError::MalformedInlineImage {
+                offset: bi_offset,
+                reason: "BI 이후 ID 키워드 없이 데이터 끝".to_string(),
+            });
+        }
+
+        // ID 키워드 감지 (뒤에 키워드 문자 없어야 함)
+        if data[ws_pos..].starts_with(b"ID")
+            && data[ws_pos + 2..]
+                .first()
+                .map(|&b| !is_keyword_char(b))
+                .unwrap_or(true)
+        {
+            pos = ws_pos + 2; // "ID" 다음
+            break;
+        }
+
+        // key: Name 객체 (/ 로 시작)
+        if data[ws_pos] != b'/' {
+            return Err(ParseError::MalformedInlineImage {
+                offset: ws_pos,
+                reason: format!(
+                    "인라인 이미지 dict key가 Name이 아님: 0x{:02X}",
+                    data[ws_pos]
+                ),
+            });
+        }
+        let (key_obj, key_consumed) =
+            parse_object(data, ws_pos).map_err(|_| ParseError::MalformedInlineImage {
+                offset: ws_pos,
+                reason: "인라인 이미지 dict key 파싱 실패".to_string(),
+            })?;
+        dict_operands.push(key_obj);
+        pos = ws_pos + key_consumed;
+
+        // value: 임의 PdfObject
+        let (val_obj, val_consumed) =
+            parse_object(data, pos).map_err(|_| ParseError::MalformedInlineImage {
+                offset: pos,
+                reason: "인라인 이미지 dict value 파싱 실패".to_string(),
+            })?;
+        dict_operands.push(val_obj);
+        pos += val_consumed;
+    }
+
+    // ID 다음 공백 1바이트 스킵 (스펙: "followed by a single white-space character")
+    if pos < data.len() && is_pdf_whitespace(data[pos]) {
+        pos += 1;
+    }
+
+    // raw image bytes 수집: 공백 + EI 패턴 탐색
+    // 스펙: "The EI operator shall be preceded by a single white-space character"
+    // EI 뒤에 키워드 문자가 없어야 함 (연산자 경계)
+    let image_data_start = pos;
+    loop {
+        if pos >= data.len() {
+            return Err(ParseError::MalformedInlineImage {
+                offset: bi_offset,
+                reason: "인라인 이미지 EI 키워드 없이 데이터 끝".to_string(),
+            });
+        }
+
+        // 현재 바이트가 whitespace이고 다음에 EI가 오는지 확인
+        if is_pdf_whitespace(data[pos])
+            && data[pos + 1..].starts_with(b"EI")
+            && data[pos + 3..]
+                .first()
+                .map(|&b| !is_keyword_char(b))
+                .unwrap_or(true)
+        {
+            let image_data = data[image_data_start..pos].to_vec();
+            let next_pos = pos + 3; // whitespace + "EI"
+            let op = ContentStreamOperation::inline_image(dict_operands, image_data);
+            return Ok((op, next_pos));
+        }
+
+        pos += 1;
+    }
+}
+
+fn is_pdf_whitespace(b: u8) -> bool {
+    matches!(b, b' ' | b'\t' | b'\r' | b'\n' | b'\x0C' | b'\x00')
 }
 
 /// PDF 키워드 바이트를 `ContentStreamOperator`로 변환한다.
@@ -395,5 +504,108 @@ mod internal_tests {
             ops[0].operator,
             ContentStreamOperator::Unknown(b"xyz".to_vec())
         );
+    }
+
+    // ── Checkpoint D-1 단위 테스트 ────────────────────────────────────
+
+    #[test]
+    fn inline_image_basic() {
+        // BI /W 10 /H 5 /CS /G /BPC 8 ID <10*5=50 bytes> EI
+        let mut data = b"BI /W 10 /H 5 /CS /G /BPC 8\nID ".to_vec();
+        data.extend_from_slice(&[0xABu8; 50]); // 50 raw bytes
+        data.extend_from_slice(b"\nEI");
+        let ops = parse_content_stream(&data).unwrap();
+        assert_eq!(ops.len(), 1);
+        assert_eq!(ops[0].operator, ContentStreamOperator::InlineImage);
+        // dict: /W 10 /H 5 /CS /G /BPC 8 → 4쌍 = 8개 피연산자
+        assert_eq!(ops[0].operands.len(), 8);
+        assert_eq!(ops[0].inline_data.as_ref().unwrap().len(), 50);
+    }
+
+    #[test]
+    fn inline_image_without_id_returns_error() {
+        let data = b"BI /W 10\n";
+        let err = parse_content_stream(data).unwrap_err();
+        assert!(matches!(err, ParseError::MalformedInlineImage { .. }));
+    }
+
+    #[test]
+    fn inline_image_without_ei_returns_error() {
+        let mut data = b"BI /W 10 ID ".to_vec();
+        data.extend_from_slice(&[0xABu8; 20]);
+        let err = parse_content_stream(&data).unwrap_err();
+        assert!(matches!(err, ParseError::MalformedInlineImage { .. }));
+    }
+
+    #[test]
+    fn inline_image_ei_in_data_without_preceding_whitespace_is_not_ei() {
+        // raw bytes에 EI가 있어도 앞에 공백이 없으면 EI로 인식하지 않음
+        let mut data = b"BI /W 2 /H 1 ID ".to_vec();
+        data.extend_from_slice(b"xEI"); // 공백 없이 EI → EI 아님
+        data.extend_from_slice(b"\nEI"); // 진짜 EI
+        let ops = parse_content_stream(&data).unwrap();
+        assert_eq!(ops.len(), 1);
+        // inline_data에는 'xEI'가 포함되어야 함
+        let img_data = ops[0].inline_data.as_ref().unwrap();
+        assert!(img_data.contains(&b'x'));
+    }
+
+    #[test]
+    fn q_q_balanced_succeeds() {
+        let ops = parse_content_stream(b"q q Q Q").unwrap();
+        assert_eq!(ops.len(), 4);
+    }
+
+    #[test]
+    fn q_q_unbalanced_excess_q_at_end() {
+        let err = parse_content_stream(b"q q Q").unwrap_err();
+        match err {
+            ParseError::UnbalancedGraphicsState { depth, .. } => assert_eq!(depth, 1),
+            other => panic!("expected UnbalancedGraphicsState, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn q_unmatched_restore_first() {
+        let err = parse_content_stream(b"Q q Q").unwrap_err();
+        match err {
+            ParseError::UnbalancedGraphicsState { depth, offset } => {
+                assert_eq!(depth, -1);
+                assert_eq!(offset, 0); // Q는 위치 0
+            }
+            other => panic!("expected UnbalancedGraphicsState, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn integrated_text_path_color_stream() {
+        let stream = b"\
+BT\n\
+  /F1 12 Tf\n\
+  72 720 Td\n\
+  (Hello) Tj\n\
+ET\n\
+q\n\
+  1 0 0 RG\n\
+  100 100 m\n\
+  200 200 l\n\
+  S\n\
+Q\n\
+";
+        let ops = parse_content_stream(stream).unwrap();
+        // BT, Tf, Td, Tj, ET, q, RG, m, l, S, Q = 11개
+        assert_eq!(ops.len(), 11);
+        assert_eq!(ops[0].operator, ContentStreamOperator::BeginText);
+        assert_eq!(ops[4].operator, ContentStreamOperator::EndText);
+        assert_eq!(ops[5].operator, ContentStreamOperator::SaveState);
+        assert_eq!(ops[10].operator, ContentStreamOperator::RestoreState);
+    }
+
+    #[test]
+    fn empty_bt_et_pair() {
+        let ops = parse_content_stream(b"BT ET").unwrap();
+        assert_eq!(ops.len(), 2);
+        assert!(ops[0].operands.is_empty());
+        assert!(ops[1].operands.is_empty());
     }
 }
