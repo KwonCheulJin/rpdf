@@ -240,6 +240,25 @@ fn reject_malformed_entry_non_standard_eol() {
 }
 
 #[test]
+fn reject_malformed_entry_space_before_cr_lf() {
+    // "oooooooooo ggggg n \r\n" (21바이트) — space+CR+LF 는 비표준.
+    // 파서는 data[pos..pos+20] = 첫 20바이트를 읽으므로
+    // entry[18..20] = [' ', '\r'] → MalformedXref.
+    // IT-8 합성 헬퍼 작성 중 "f \r\n" 실수에서 발견 (xref-entry-format-spaces.md).
+    let mut entry = format!("{:010} {:05} {}", 9u64, 0u16, 'n').into_bytes();
+    entry.extend_from_slice(b" \r\n"); // 21바이트: 공백 + CR + LF
+    let mut buf = Vec::new();
+    buf.extend_from_slice(b"xref\n0 1\n");
+    buf.extend_from_slice(&entry);
+    buf.extend_from_slice(b"trailer\n<< /Size 1 /Root 1 0 R >>");
+    let err = parse_xref(&buf, 0).unwrap_err();
+    assert!(
+        matches!(err, ParseError::MalformedXref { .. }),
+        "space+CR EOL은 MalformedXref여야 함: {err:?}"
+    );
+}
+
+#[test]
 fn reject_malformed_entry_unknown_type() {
     let entry = format!("{:010} {:05} x\r\n", 9u64, 0u16).into_bytes();
     assert_eq!(entry.len(), 20);
@@ -404,5 +423,106 @@ fn non_cyclic_chain_of_101_returns_too_deep() {
     assert!(
         matches!(err, ParseError::XrefChainTooDeep { max_depth: 100 }),
         "101개 비순환 chain은 XrefChainTooDeep이어야 함, 실제: {err:?}"
+    );
+}
+
+// ── Hybrid Chain 테스트 ───────────────────────────────────────────────────────
+
+/// big-endian으로 xref 스트림 엔트리 행을 생성한다.
+fn make_stream_entry_row(fields: &[(usize, u64)]) -> Vec<u8> {
+    let mut row = Vec::new();
+    for &(width, val) in fields {
+        for i in (0..width).rev() {
+            row.push(((val >> (i * 8)) & 0xff) as u8);
+        }
+    }
+    row
+}
+
+/// 비압축 xref 스트림 간접 객체 바이트를 생성한다.
+///
+/// `index`: None이면 /Index 생략 → 기본값 [(0, size)].
+///           Some((start, count))이면 /Index [start count] 명시.
+fn make_xref_stream_block(
+    obj_num: u32,
+    entries_data: &[u8],
+    w: [usize; 3],
+    size: u32,
+    index: Option<(u32, u32)>,
+    prev: Option<u64>,
+) -> Vec<u8> {
+    let length = entries_data.len();
+    let prev_str = prev.map(|p| format!(" /Prev {p}")).unwrap_or_default();
+    let index_str = index
+        .map(|(s, c)| format!(" /Index [{s} {c}]"))
+        .unwrap_or_default();
+    let dict = format!(
+        "<< /Type /XRef /Size {size} /W [{} {} {}] /Root 1 0 R /Length {length}{index_str}{prev_str} >>",
+        w[0], w[1], w[2]
+    );
+    let mut buf = Vec::new();
+    buf.extend_from_slice(format!("{obj_num} 0 obj\n{dict}\nstream\n").as_bytes());
+    buf.extend_from_slice(entries_data);
+    buf.extend_from_slice(b"\nendstream\nendobj\n");
+    buf
+}
+
+#[test]
+fn parse_xref_chain_xref_stream_only() {
+    // xref 스트림만 있는 chain (전통 xref 없음)
+    // W=[1,4,2], 1개 엔트리: obj0 InUse offset=100
+    // size=1 → Index 기본값 [(0, 1)], 데이터 7바이트(1행)로 일치
+    let w = [1usize, 4, 2];
+    let entry = make_stream_entry_row(&[(1, 1), (4, 100), (2, 0)]);
+    let data = make_xref_stream_block(1, &entry, w, 1, None, None);
+    let result = parse_xref(&data, 0).unwrap();
+    assert_eq!(result.table.len(), 1);
+    assert_eq!(
+        result.table.get(0),
+        Some(&XrefEntry::InUse {
+            offset: 100,
+            generation: 0
+        })
+    );
+}
+
+#[test]
+fn parse_xref_chain_traditional_then_stream() {
+    // 전통 xref + xref 스트림 혼합 chain
+    // 1) xref 스트림 (최신): obj1 InUse offset=200, /Prev → 전통 xref, /Index [1 1]
+    // 2) 전통 xref (이전): obj0 InUse offset=100
+    // 최신 섹션이 우선이므로 obj0=100, obj1=200
+
+    // ── 전통 xref 섹션 먼저 구성 (이전 섹션, obj0)
+    let trad_entries = [(100u64, 0u16, 'n')];
+    let traditional = make_xref_section(0, &trad_entries, "<< /Size 2 /Root 5 0 R >>");
+    let trad_offset = 0u64;
+
+    // ── xref 스트림 섹션 (최신, obj1만 포함)
+    let stream_start = traditional.len() as u64;
+    let w = [1usize, 4, 2];
+    let entry = make_stream_entry_row(&[(1, 1), (4, 200), (2, 0)]);
+    // /Index [1 1]: 객체 1만 포함, size=2
+    let stream_block = make_xref_stream_block(5, &entry, w, 2, Some((1, 1)), Some(trad_offset));
+
+    let mut data = traditional;
+    data.extend_from_slice(&stream_block);
+
+    let result = parse_xref(&data, stream_start).unwrap();
+    // 전통: obj0 = 100, 스트림: obj1 = 200
+    assert_eq!(result.table.len(), 2);
+    assert_eq!(
+        result.table.get(0),
+        Some(&XrefEntry::InUse {
+            offset: 100,
+            generation: 0
+        })
+    );
+    assert_eq!(
+        result.table.get(1),
+        Some(&XrefEntry::InUse {
+            offset: 200,
+            generation: 0
+        })
     );
 }
