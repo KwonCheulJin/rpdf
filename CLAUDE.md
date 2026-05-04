@@ -129,6 +129,59 @@ private/`pub(crate)` 함수 테스트 → 인라인 `#[cfg(test)] mod internal_t
 8. **회고** — `/task-retro` 실행
 9. **PR** — `devel` 브랜치로, `closes #{N}`
 
+## 에이전트 자동화 워크플로우 (v0.2+)
+
+에이전트 코딩 모드에서 각 Task는 다음 순서로 실행된다.
+
+### 메인 대화 역할 (사람 검토 시점)
+- 사전 조사 요약 검토 (Step 1–2)
+- 계획서 검토 (Step 3–5)
+- PR 머지 결정
+
+### Task 실행 순서
+
+```
+[메인] plan-eng-review 실행 → 보완점 수집
+  ↓
+[메인] 미결 파일(계획서·조사 문서) 즉시 커밋 ← worktree가 pick-up하도록
+  ↓
+[generator subagent, isolation: worktree]
+  Issue 생성 → 계획서 작성 → 구현 → 품질 관문 → 완료 보고서
+  → git push origin <branch>
+  → gh pr create --base devel
+  → PR URL 반환
+  ↓
+[메인] PR URL 확인 → 사람에게 전달
+  ↓
+[사람] PR 검토 후 머지
+```
+
+### pre-subagent 커밋 규칙
+
+subagent 실행 전, 메인 대화에서 생성한 파일이 있으면 반드시 커밋한다.
+
+```bash
+# 미추적 파일 확인 후 커밋 (있을 때만)
+git add mydocs/plans/ mydocs/working/ CLAUDE.md
+git diff --cached --quiet || git commit -m "docs: Task #{N} 사전 준비 (계획서·조사 문서)"
+```
+
+### subagent 프롬프트 필수 섹션
+
+모든 Task subagent 프롬프트 끝에 다음 섹션을 포함한다:
+
+```
+## 완료 후 자동 처리 (push + PR)
+
+완료 보고서 커밋 후:
+1. `git push origin $(git branch --show-current)`
+2. `gh pr create --base devel --head $(git branch --show-current) \
+     --title "Task #{N}: ..." --body "...closes #{N}..."`
+3. PR URL을 반환 정보에 포함
+
+PR 생성까지 자동 완료. 사람은 머지만 한다.
+```
+
 ## 금지 사항
 
 - 계획서 없이 구현 시작
