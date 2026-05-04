@@ -15,6 +15,7 @@ path = "src/main.rs"
 rpdf-core.workspace = true
 rpdf-parser.workspace = true
 rpdf-render.workspace = true
+rpdf-svg.workspace = true
 anyhow.workspace = true
 serde.workspace = true
 serde_json.workspace = true
