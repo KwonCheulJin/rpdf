@@ -1,0 +1,34 @@
+---
+source: crates/rpdf-parser/tests/regression/mod.rs
+assertion_line: 132
+expression: parse_to_snapshot(& bytes)
+---
+doc:
+  page_count: 3
+  metadata:
+    producer: Adobe Acrobat (64-bit) 25.1.20756
+  pages:
+    - index: 0
+      media_box:
+        - 0
+        - 0
+        - 612
+        - 792
+      rotation: 0
+      op_count: 7
+    - index: 1
+      media_box:
+        - 0
+        - 0
+        - 612
+        - 792
+      rotation: 0
+      op_count: 9
+    - index: 2
+      media_box:
+        - 0
+        - 0
+        - 612
+        - 792
+      rotation: 0
+      op_count: 9

@@ -176,7 +176,7 @@ Output
 
 ## 배포 타겟별 바인딩
 
-### CLI (`src/main.rs`)
+### CLI (`crates/rpdf-cli/src/main.rs`)
 
 `clap`을 사용해 서브커맨드 구성:
 
@@ -191,7 +191,7 @@ rpdf rotate <file> --page <N> --degrees <90|180|270>
 rpdf diff <a> <b>
 ```
 
-### WASM API (`src/wasm_api.rs`)
+### WASM API (`crates/rpdf-wasm/src/lib.rs` — v0.4 예정)
 
 `wasm-bindgen`으로 JavaScript 바인딩:
 

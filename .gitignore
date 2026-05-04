@@ -257,4 +257,8 @@ pkg/
 src-tauri/target/
 *.pdf.bak
 # examples/ 와 samples/ 의 테스트 PDF는 커밋 대상
-# 단, 1MB 초과 파일은 커밋하지 않는다
+# 단, 3MB 초과 파일은 커밋하지 않는다
+samples/large/
+# pdfium 동적 라이브러리 (scripts/fetch-pdfium.sh로 로컬 설치)
+pdfium/
+ai-ready-output/

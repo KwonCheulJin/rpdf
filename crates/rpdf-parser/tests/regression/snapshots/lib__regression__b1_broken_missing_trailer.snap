@@ -1,0 +1,6 @@
+---
+source: crates/rpdf-parser/tests/regression/mod.rs
+assertion_line: 152
+expression: parse_to_snapshot(& bytes)
+---
+error: MissingEof

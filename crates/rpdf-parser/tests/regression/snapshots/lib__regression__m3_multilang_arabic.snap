@@ -1,0 +1,6 @@
+---
+source: crates/rpdf-parser/tests/regression/mod.rs
+assertion_line: 146
+expression: parse_to_snapshot(& bytes)
+---
+error: "MalformedStream { offset: 64, reason: \"/Length is an indirect reference (not yet supported; Task #7)\" }"

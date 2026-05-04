@@ -1,7 +1,7 @@
 [workspace]
 resolver = "2"
-members = [
-    "crates/rpdf-core", "crates/rpdf-parser",
+members = ["crates/rpdf-cli",
+    "crates/rpdf-core", "crates/rpdf-edit", "crates/rpdf-parser", "crates/rpdf-render", "crates/rpdf-svg",
 ]
 
 [workspace.package]
@@ -13,9 +13,19 @@ repository = "https://github.com/KwonCheulJin/rpdf"
 
 [workspace.dependencies]
 rpdf-core = { path = "crates/rpdf-core" }
+rpdf-edit = { path = "crates/rpdf-edit" }
+rpdf-parser = { path = "crates/rpdf-parser" }
+rpdf-render = { path = "crates/rpdf-render" }
+rpdf-svg = { path = "crates/rpdf-svg" }
 thiserror = "2"
 anyhow = "1"
 tracing = "0.1"
 serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 proptest = "1"
 flate2 = "1.1"
+clap = { version = "4", features = ["derive"] }
+assert_cmd = "2"
+predicates = "3"
+tempfile = "3"
+insta = { version = "1", features = ["yaml"] }

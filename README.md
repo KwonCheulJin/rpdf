@@ -88,9 +88,18 @@ pnpm tauri dev
 - `mydocs/tech/` — 기술 연구 문서
 - `mydocs/manual/` — 온보딩·아키텍처 가이드
 
+## 주의사항 (Gotcha)
+
+- **pdfium 런타임 필요**: `rpdf export-png` 실행 전 `scripts/fetch-pdfium.sh` 실행 필수
+- **PDFIUM_DYNAMIC_LIB_PATH는 디렉토리**: 파일 경로가 아닌 `pdfium/lib/` 같은 디렉토리를 지정
+- **rpdf-core에 파싱 로직 금지**: 파싱은 `rpdf-parser`만 — 위반 시 WASM 빌드 오류
+- **insta 스냅샷 첫 실행**: `*.snap.new` 생성됨 → `cargo insta accept` 후 커밋 필요
+
 ## 기여
 
 이 프로젝트는 개인 학습 + 실사용 도구 제작이 목적입니다. 이슈 제보는 환영하지만, 기능 추가는 실사용 피드백을 우선합니다.
+
+[기여 가이드 전체 보기](CONTRIBUTING.md)
 
 ## 라이선스
 

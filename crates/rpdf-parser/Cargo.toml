@@ -15,3 +15,8 @@ flate2.workspace = true
 [dev-dependencies]
 flate2.workspace = true
 proptest.workspace = true
+insta.workspace = true
+serde.workspace = true
+
+[features]
+samples-large = []

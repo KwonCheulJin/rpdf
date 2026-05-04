@@ -1,0 +1,18 @@
+# CODEOWNERS — 모듈별 리뷰어 지정
+# 형식: <pattern> <@owner>
+# 현재 단독 개발 프로젝트 — 모든 파일은 기여자 본인 리뷰
+
+* @KwonCheulJin
+
+# 아키텍처 문서 변경 시 추가 검토
+/mydocs/manual/ @KwonCheulJin
+/mydocs/plans/   @KwonCheulJin
+/CLAUDE.md       @KwonCheulJin
+
+# CI / 인프라 변경
+/.github/workflows/ @KwonCheulJin
+/scripts/           @KwonCheulJin
+
+# 도메인 코어 — 변경 영향 범위 넓음
+/crates/rpdf-core/  @KwonCheulJin
+/crates/rpdf-parser/ @KwonCheulJin

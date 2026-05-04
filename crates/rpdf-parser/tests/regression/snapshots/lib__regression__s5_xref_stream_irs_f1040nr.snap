@@ -1,0 +1,28 @@
+---
+source: crates/rpdf-parser/tests/regression/mod.rs
+assertion_line: 136
+expression: parse_to_snapshot(& bytes)
+---
+doc:
+  page_count: 2
+  metadata:
+    title: 2025 Form 1040-NR
+    author: "C:DC:TS:CAR:MP"
+    producer: Designer 6.5
+  pages:
+    - index: 0
+      media_box:
+        - 0
+        - 0
+        - 612
+        - 792
+      rotation: 0
+      op_count: 5665
+    - index: 1
+      media_box:
+        - 0
+        - 0
+        - 612
+        - 792
+      rotation: 0
+      op_count: 4681
