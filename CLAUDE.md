@@ -120,8 +120,10 @@ private/`pub(crate)` 함수 테스트 → 인라인 `#[cfg(test)] mod internal_t
 2. **브랜치 생성** — `local/task{N}`
 3. **계획서 작성** — `mydocs/plans/task{N}-{slug}.md` (데이터 모델·API·엣지 케이스·테스트 전략)
    - ⚠️ 버전은 **실제 설치된 버전** 기재 (최소 요구사항 아님)
-4. **계획 승인** — 사람이 읽고 승인
-5. **구현** — 계획서대로. 계획 외 변경 시 계획서 먼저 수정.
+4. **계획 검토** — 사람이 읽고 승인 + `/plan-eng-review` 실행 (⚠️ 승인만으로 부족, 반드시 review 후 구현)
+5. **구현** — `generator` subagent에 계획서를 전달해 위임. **현재 세션에서 직접 구현 코드 작성 금지.**
+   - generator 완료 후 `evaluator` subagent로 검증
+   - 계획 외 변경 시 계획서 먼저 수정.
 6. **테스트** — `cargo test`, `cargo clippy`, `pnpm test` 통과 필수
 7. **완료 보고서** — `mydocs/working/task{N}-done.md`
    - ⚠️ **회고 분류 표 필수**: 트러블슈팅 후보를 A(즉시 CLAUDE.md 반영)·B(트러블슈팅 문서)·C(완료 보고서 메모)로 분류해 보고서에 포함. A 항목은 보고서 작성과 동시에 CLAUDE.md를 갱신한다.
@@ -132,6 +134,8 @@ private/`pub(crate)` 함수 테스트 → 인라인 `#[cfg(test)] mod internal_t
 ## 금지 사항
 
 - 계획서 없이 구현 시작
+- `/plan-eng-review` 없이 구현 시작 (계획 승인과 별개)
+- 현재 세션에서 직접 구현 코드 작성 (`generator` subagent 위임 필수)
 - 테스트 없이 new feature 추가
 - 아키텍처 결정 독자 결정
 - `unsafe` 블록 사람 확인 없이 추가
