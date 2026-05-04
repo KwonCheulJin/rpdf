@@ -894,6 +894,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "rpdf-edit"
+version = "0.1.0"
+dependencies = [
+ "rpdf-core",
+ "thiserror",
+]
+
+[[package]]
 name = "rpdf-parser"
 version = "0.1.0"
 dependencies = [

@@ -39,6 +39,16 @@ PDF 스펙(ISO 32000) 용어를 코드에 그대로 반영한다.
 > 악성 입력 `[1, 100, 2]`가 들어오면 u64 읽기 시 silent truncation으로 잘못된 엔트리 디코딩.
 > → `W[i] > 8` 조건을 명시적으로 거부하고 `XrefStreamInvalidW` 반환.
 
+### `Send + Sync` 트레이트 경계와 테스트 더미 내부 가변성
+
+`Box<dyn Trait>` 트레이트 객체에 `Send + Sync` 경계가 있을 때, 테스트 더미에서 `&self`를 통한 내부 가변성이 필요하면 **`Mutex<T>`를 사용**한다.
+
+- `Cell<T>: !Sync` → `Command: Send + Sync` 경계를 충족할 수 없어 컴파일 오류
+- `Mutex<T>: Sync` → 트레이트 객체로 boxing 가능
+
+> **사례**: `ToggleTitleCommand`에서 execute 시 이전 상태를 저장하기 위해 처음 `Cell`을 사용했으나  
+> `Command: Send + Sync` 경계로 컴파일 실패. `Mutex<Option<Vec<u8>>>`로 교체해 해결.
+
 ### 스택 기반 상태 관리 (Save/Restore)
 
 상태 스택(q/Q, pushMatrix 등)과 연동된 보조 트래커가 있을 때,
