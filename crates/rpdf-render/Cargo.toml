@@ -1,0 +1,14 @@
+[package]
+name = "rpdf-render"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+pdfium-render = "0.9.1"
+image = { version = "0.25", default-features = false, features = ["png"] }
+rpdf-core = { path = "../rpdf-core" }
+thiserror.workspace = true

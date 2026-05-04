@@ -1,7 +1,7 @@
 [workspace]
 resolver = "2"
 members = ["crates/rpdf-cli",
-    "crates/rpdf-core", "crates/rpdf-parser",
+    "crates/rpdf-core", "crates/rpdf-parser", "crates/rpdf-render",
 ]
 
 [workspace.package]
