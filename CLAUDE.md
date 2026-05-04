@@ -120,7 +120,7 @@ private/`pub(crate)` 함수 테스트 → 인라인 `#[cfg(test)] mod internal_t
 2. **브랜치 생성** — `local/task{N}`
 3. **계획서 작성** — `mydocs/plans/task{N}-{slug}.md` (데이터 모델·API·엣지 케이스·테스트 전략)
    - ⚠️ 버전은 **실제 설치된 버전** 기재 (최소 요구사항 아님)
-4. **계획 검토** — 사람이 읽고 승인 + `/plan-eng-review` 실행 (⚠️ 승인만으로 부족, 반드시 review 후 구현)
+4. **계획 검토** — `/plan-eng-review` 실행 후 사람이 승인 (⚠️ plan-eng-review 없이 구현 시작 금지)
 5. **구현** — `generator` subagent에 계획서를 전달해 위임. **현재 세션에서 직접 구현 코드 작성 금지.**
    - generator 완료 후 `evaluator` subagent로 검증
    - 계획 외 변경 시 계획서 먼저 수정.
