@@ -174,8 +174,11 @@ closes #{N}
 - Rust: `snake_case.rs` / TypeScript: `kebab-case.ts`, `PascalCase.tsx` (컴포넌트)
 - 문서: `kebab-case.md` / 브랜치: `local/task{N}` 또는 `feature/{slug}`
 
-## 참고
+## 참고 (See Also)
 
-- 개발 방법론: `mydocs/manual/hyper-waterfall.md`
-- 아키텍처: `mydocs/manual/architecture.md`
-- 온보딩: `mydocs/manual/onboarding.md`
+- 개발 방법론: [mydocs/manual/hyper-waterfall.md](mydocs/manual/hyper-waterfall.md)
+- 아키텍처: [mydocs/manual/architecture.md](mydocs/manual/architecture.md)
+- 온보딩: [mydocs/manual/onboarding.md](mydocs/manual/onboarding.md)
+- 기술 결정 ADR: [docs/decisions/](docs/decisions/)
+- Gotcha·함정: [CONTRIBUTING.md](CONTRIBUTING.md#알려진-gotcha-이미-빠진-함정)
+- CI 대응: [docs/playbooks/ci-failure-runbook.md](docs/playbooks/ci-failure-runbook.md)

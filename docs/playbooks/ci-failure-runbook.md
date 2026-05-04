@@ -39,7 +39,14 @@ cargo clippy -- -D warnings
 경고를 에러로 처리. 로컬에서 동일 명령 실행 후 수정.  
 `approx_constant` 경고: 테스트 픽스처 값이 π/e 근사면 `use std::f64::consts::PI` 사용.
 
-## 관련 문서
+## 레거시 패턴 주의 (Deprecated / Legacy Caveat)
 
-- `.github/workflows/ci.yml` — CI 전체 스텝 정의
-- `scripts/fetch-pdfium.sh` — pdfium 다운로드 스크립트
+- `cargo test` 대신 `cargo nextest run` 사용 — 레거시(`legacy`) `cargo test`는 스냅샷 실패를 다르게 처리
+- `INSTA_UPDATE=unsaved`는 deprecated — `INSTA_UPDATE=no`를 사용할 것
+- workaround: pdfium cache miss 시 `pdfium/` 디렉토리 수동 삭제 후 재실행
+
+## 관련 문서 (See Also)
+
+- [.github/workflows/ci.yml](../../.github/workflows/ci.yml) — CI 전체 스텝 정의
+- [scripts/fetch-pdfium.sh](../../scripts/fetch-pdfium.sh) — pdfium 다운로드 스크립트
+- [scripts/CLAUDE.md](../../scripts/CLAUDE.md) — 빌드번호 호환표

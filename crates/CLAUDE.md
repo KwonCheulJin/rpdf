@@ -19,8 +19,14 @@ cargo new --lib crates/<name> --vcs none
 - `version.workspace = true`, `edition.workspace = true` 사용
 - 크레이트명: `rpdf-<role>` 패턴
 
-## 주의사항
+## 주의사항 (Gotcha)
 
-- `rpdf-core`에는 파싱·렌더링 로직 없음 — 값 객체(`Copy + Clone + PartialEq + Eq`)만
+- **Caveat**: `rpdf-core`에는 파싱·렌더링 로직 없음 — 값 객체(`Copy + Clone + PartialEq + Eq`)만
 - `rpdf-render`는 `PDFIUM_DYNAMIC_LIB_PATH` 환경변수 필요 (런타임 동적 로딩)
+- **Pitfall**: `rpdf-core` 타입 변경 → 모든 크레이트 재컴파일. 영향 범위 넓음.
 - 테스트 회귀 케이스: `crates/rpdf-parser/tests/regression/`
+
+## 관련 (See Also)
+
+- [docs/decisions/ADR-001-crate-workspace-structure.md](../docs/decisions/ADR-001-crate-workspace-structure.md) — 크레이트 분리 결정
+- [CONTRIBUTING.md](../CONTRIBUTING.md) — 네이밍 규칙·Known Issues

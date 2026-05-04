@@ -63,9 +63,9 @@ closes #{번호}
 - TypeScript: 프로젝트 `.prettierrc` 준수
 - import 순서: 표준 라이브러리 → 외부 크레이트 → 내부 모듈
 
-## 네이밍 규칙
+## 명명·네이밍 규칙 (Naming Convention / Pattern)
 
-PDF 스펙(ISO 32000) 용어를 코드에 그대로 반영한다.
+PDF 스펙(ISO 32000) 용어를 코드에 그대로 반영한다. Don't use translated or invented names.
 
 | 개념 | 올바른 이름 | 피해야 할 이름 |
 |------|------------|---------------|

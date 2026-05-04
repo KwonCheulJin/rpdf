@@ -42,7 +42,13 @@ cargo insta accept   # 또는 cargo insta review (대화형)
 git add crates/rpdf-parser/tests/regression/snapshots/
 ```
 
-## 관련 문서
+## 알려진 함정 (Known Pitfalls)
 
-- `mydocs/troubleshootings/` — 과거 파싱 버그 목록
-- `docs/decisions/ADR-003-parser-no-lopdf.md` — 파서 설계 결정
+- **Caveat**: 암호화 PDF는 `ParseError::UnsupportedEncryption` — 현재 지원 없음, workaround 없음
+- **Gotcha**: 순환 참조 페이지 트리는 스택 오버플로우 유발 (v0.2 미수정, deprecated 동작)
+- **Hidden issue**: `load_document` 성공해도 일부 페이지 IR이 빈 경우 있음 — content stream 인코딩 문제
+
+## 관련 문서 (See Also)
+
+- [mydocs/troubleshootings/](../../mydocs/troubleshootings/) — 과거 파싱 버그 목록
+- [docs/decisions/ADR-003-parser-no-lopdf.md](../decisions/ADR-003-parser-no-lopdf.md) — 파서 설계 결정
