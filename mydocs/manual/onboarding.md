@@ -142,16 +142,13 @@ rpdf diff a.pdf b.pdf
 
 | 경로 | 언제 가는가 |
 | --- | --- |
-| `src/parser/` | PDF 파싱 버그, 새 PDF 버전 지원 |
-| `src/model/` | 데이터 구조 이해, IR 수정 |
-| `src/document_core/commands/` | 새 편집 기능 추가 |
-| `src/document_core/queries/` | 렌더링·조회 로직 |
-| `src/renderer/` | 렌더링 품질 이슈 |
-| `rpdf-studio/src/ui/` | 웹 UI 변경 |
-| `rpdf-desktop/src-tauri/` | 데스크톱 백엔드 |
+| `crates/rpdf-parser/src/` | PDF 파싱 버그, 새 PDF 버전 지원 |
+| `crates/rpdf-core/src/` | 데이터 구조 이해, IR 수정 |
+| `crates/rpdf-cli/src/` | CLI 명령 추가·수정 |
+| `crates/rpdf-render/src/` | 렌더링 품질 이슈 |
+| `crates/rpdf-parser/tests/regression/` | 회귀 테스트 추가 |
 | `mydocs/plans/` | 작업 전 계획서 작성 |
 | `mydocs/tech/` | 기술적 맥락 이해 |
-| `tests/regression/` | 회귀 테스트 추가 |
 
 ## 첫 기여로 추천하는 타스크
 

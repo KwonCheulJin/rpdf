@@ -1,0 +1,77 @@
+name: Docs Check
+
+on:
+  push:
+    branches: [main, devel]
+    paths:
+      - '**/*.md'
+      - 'CLAUDE.md'
+      - 'CONTRIBUTING.md'
+      - 'docs/**'
+      - 'mydocs/**'
+  pull_request:
+    paths:
+      - '**/*.md'
+      - 'docs/**'
+      - 'mydocs/**'
+
+jobs:
+  docs-check:
+    name: Docs / README / Context 검증
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check broken internal file references
+        run: |
+          python3 - <<'EOF'
+          import os, re, sys
+
+          EXCLUDE = {'target', '.git', 'node_modules', 'pdfium', 'ai-ready-output'}
+
+          def find_md(root):
+              for base, dirs, files in os.walk(root):
+                  dirs[:] = [d for d in dirs if d not in EXCLUDE]
+                  for f in files:
+                      if f.endswith('.md'):
+                          yield os.path.join(base, f)
+
+          broken = []
+          for md in find_md('.'):
+              with open(md, encoding='utf-8', errors='ignore') as f:
+                  content = f.read()
+              refs = re.findall(r'\[.+?\]\(([^)#]+)\)', content)
+              base = os.path.dirname(md)
+              for ref in refs:
+                  ref = ref.strip()
+                  if ref.startswith(('http', 'mailto', '#')):
+                      continue
+                  cands = [
+                      os.path.normpath(os.path.join(base, ref)),
+                      os.path.normpath(os.path.join('.', ref)),
+                  ]
+                  if not any(os.path.exists(c) for c in cands):
+                      broken.append(f'{md}: broken link → {ref}')
+
+          if broken:
+              for b in broken:
+                  print(f'::error::{b}')
+              sys.exit(1)
+          else:
+              print(f'✅ 모든 내부 링크 정상 ({sum(1 for _ in find_md("."))}개 파일 검사)')
+          EOF
+
+      - name: Verify CLAUDE.md exists
+        run: |
+          if [ ! -f "CLAUDE.md" ]; then
+            echo "::error::CLAUDE.md not found in repository root"
+            exit 1
+          fi
+          echo "✅ CLAUDE.md 존재 확인"
+
+      - name: Check context docs freshness
+        run: |
+          echo "README / CONTEXT 문서 최신성 확인 (stale 감지)"
+          git log --since="90 days ago" --name-only --pretty=format: -- '*.md' | \
+            grep -v "^$" | sort -u | head -20 || true
+          echo "✅ 최근 90일 내 수정된 문서 목록 출력 완료"

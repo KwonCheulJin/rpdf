@@ -74,7 +74,7 @@ private/`pub(crate)` 함수 테스트 → 인라인 `#[cfg(test)] mod internal_t
   `version:` 추가 시 **ERR_PNPM_BAD_PM_VERSION** 충돌 → `mydocs/troubleshootings/pnpm-action-setup-version-conflict.md`
 **외부 크레이트**: docs.rs에서 공개 API 확인 완료 후 사용. 계획서에 "공개 API 확인 완료" 명시.
 **CI cargo 도구 설치**: `taiki-e/install-action@<tool-name>` 패턴 사용 (예: `taiki-e/install-action@cargo-nextest`).
-**insta 스냅샷 첫 도입**: 첫 실행 시 `.snap.new` pending 파일 생성됨 → `cargo insta accept` 또는 수동 rename. CI는 `INSTA_UPDATE=no` 환경변수 필수.
+**insta 스냅샷 첫 도입**: 첫 실행 시 `*.snap.new` pending 파일 생성됨 → `cargo insta accept` 또는 수동 rename. CI는 `INSTA_UPDATE=no` 환경변수 필수.
 
 손으로 만들 것: 워크스페이스 `Cargo.toml`, `pnpm-workspace.yaml`, CI yml, `CLAUDE.md`, `mydocs/`
 
@@ -120,8 +120,10 @@ private/`pub(crate)` 함수 테스트 → 인라인 `#[cfg(test)] mod internal_t
 2. **브랜치 생성** — `local/task{N}`
 3. **계획서 작성** — `mydocs/plans/task{N}-{slug}.md` (데이터 모델·API·엣지 케이스·테스트 전략)
    - ⚠️ 버전은 **실제 설치된 버전** 기재 (최소 요구사항 아님)
-4. **계획 승인** — 사람이 읽고 승인
-5. **구현** — 계획서대로. 계획 외 변경 시 계획서 먼저 수정.
+4. **계획 검토** — `/plan-eng-review` 실행 후 사람이 승인 (⚠️ plan-eng-review 없이 구현 시작 금지)
+5. **구현** — `generator` subagent에 계획서를 전달해 위임. **현재 세션에서 직접 구현 코드 작성 금지.**
+   - generator 완료 후 `evaluator` subagent로 검증
+   - 계획 외 변경 시 계획서 먼저 수정.
 6. **테스트** — `cargo test`, `cargo clippy`, `pnpm test` 통과 필수
 7. **완료 보고서** — `mydocs/working/task{N}-done.md`
    - ⚠️ **회고 분류 표 필수**: 트러블슈팅 후보를 A(즉시 CLAUDE.md 반영)·B(트러블슈팅 문서)·C(완료 보고서 메모)로 분류해 보고서에 포함. A 항목은 보고서 작성과 동시에 CLAUDE.md를 갱신한다.
@@ -132,6 +134,8 @@ private/`pub(crate)` 함수 테스트 → 인라인 `#[cfg(test)] mod internal_t
 ## 금지 사항
 
 - 계획서 없이 구현 시작
+- `/plan-eng-review` 없이 구현 시작 (계획 승인과 별개)
+- 현재 세션에서 직접 구현 코드 작성 (`generator` subagent 위임 필수)
 - 테스트 없이 new feature 추가
 - 아키텍처 결정 독자 결정
 - `unsafe` 블록 사람 확인 없이 추가
@@ -166,7 +170,7 @@ closes #{N}
 1. `rpdf info <file>` — 메타데이터 확인
 2. `rpdf dump <file> -p <page>` — 페이지 IR 덤프
 3. `rpdf export-svg <file> --debug-overlay` — 시각적 디버그
-4. 재현 케이스 → `tests/regression/`에 추가
+4. 재현 케이스 → `crates/rpdf-parser/tests/regression/`에 추가
 5. 수정 후 동일 케이스 통과 확인
 
 ## 파일 명명 규칙
@@ -174,8 +178,11 @@ closes #{N}
 - Rust: `snake_case.rs` / TypeScript: `kebab-case.ts`, `PascalCase.tsx` (컴포넌트)
 - 문서: `kebab-case.md` / 브랜치: `local/task{N}` 또는 `feature/{slug}`
 
-## 참고
+## 참고 (See Also)
 
-- 개발 방법론: `mydocs/manual/hyper-waterfall.md`
-- 아키텍처: `mydocs/manual/architecture.md`
-- 온보딩: `mydocs/manual/onboarding.md`
+- 개발 방법론: [mydocs/manual/hyper-waterfall.md](mydocs/manual/hyper-waterfall.md)
+- 아키텍처: [mydocs/manual/architecture.md](mydocs/manual/architecture.md)
+- 온보딩: [mydocs/manual/onboarding.md](mydocs/manual/onboarding.md)
+- 기술 결정 ADR: [docs/decisions/](docs/decisions/)
+- Gotcha·함정: [CONTRIBUTING.md](CONTRIBUTING.md#알려진-gotcha-이미-빠진-함정)
+- CI 대응: [docs/playbooks/ci-failure-runbook.md](docs/playbooks/ci-failure-runbook.md)

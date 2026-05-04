@@ -1,0 +1,16 @@
+# 시나리오: 새 PDF 파싱 기능 추가
+
+## 컨텍스트
+rpdf-parser 크레이트에 새 파싱 기능을 추가합니다.
+관련 문서: crates/rpdf-parser/CLAUDE.md, CLAUDE.md
+
+## 작업
+1. `crates/rpdf-parser/src/` 에 새 파싱 모듈 추가
+2. TDD: 테스트 먼저 작성 (Red → Green → Refactor)
+3. 공개 API에 `///` 문서 주석 필수
+4. `cargo nextest run -p rpdf-parser` 통과 확인
+
+## 성공 기준
+- 새 모듈이 `rpdf-core` 타입만 의존
+- 파싱 로직이 `rpdf-core`에 없음
+- 테스트에서 에러 변형을 실제로 발생시킴
