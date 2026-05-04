@@ -878,6 +878,7 @@ dependencies = [
  "rpdf-core",
  "rpdf-parser",
  "rpdf-render",
+ "rpdf-svg",
  "serde",
  "serde_json",
  "tempfile",
@@ -912,6 +913,14 @@ dependencies = [
  "pdfium-render",
  "rpdf-core",
  "thiserror",
+]
+
+[[package]]
+name = "rpdf-svg"
+version = "0.1.0"
+dependencies = [
+ "rpdf-core",
+ "rpdf-parser",
 ]
 
 [[package]]

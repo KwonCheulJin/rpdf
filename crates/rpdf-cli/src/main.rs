@@ -49,20 +49,23 @@ enum Commands {
         #[arg(long)]
         json: bool,
     },
-    /// PDF 페이지를 PNG 파일로 렌더링한다.
+    /// PDF 페이지를 PNG 또는 SVG 파일로 렌더링한다.
     Render {
         /// PDF 파일 경로.
         #[arg(value_name = "PDF")]
         file: PathBuf,
-        /// 출력 PNG 경로 (기본: <pdf_stem>_p<page>.png, 현재 디렉터리).
+        /// 출력 파일 경로 (기본: <pdf_stem>_p<page>.png 또는 .svg).
         #[arg(short = 'o', long = "output", value_name = "PATH")]
         output: Option<PathBuf>,
         /// 0-based 페이지 인덱스 (기본: 0).
         #[arg(short = 'p', long = "page", value_name = "N", default_value = "0")]
         page: u16,
-        /// 해상도 배율 (기본: 2.0 = ~144 DPI).
+        /// 해상도 배율 (PNG 전용, 기본: 2.0 = ~144 DPI).
         #[arg(long = "scale", value_name = "FLOAT", default_value = "2.0")]
         scale: f32,
+        /// SVG 출력 모드 (pdfium 불필요).
+        #[arg(long = "svg")]
+        svg: bool,
     },
 }
 
@@ -96,11 +99,13 @@ fn run(cli: Cli) -> Result<()> {
             output,
             page,
             scale,
+            svg,
         } => commands::render::run(commands::render::RenderParams {
             file,
             output,
             page,
             scale,
+            svg,
         }),
     }
 }

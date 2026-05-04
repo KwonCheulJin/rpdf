@@ -114,3 +114,54 @@ fn it_f5_missing_pdfium_env_fails() {
         .assert()
         .failure();
 }
+
+// IT-S4: rpdf render pdfjs-basicapi.pdf --svg → .svg 파일 생성, 내용에 <svg 포함
+#[test]
+fn it_s4_render_svg_creates_svg_file() {
+    let out = tempfile::Builder::new()
+        .suffix(".svg")
+        .tempfile()
+        .expect("tempfile 생성 실패");
+    let out_path = out.path().to_string_lossy().into_owned();
+
+    rpdf()
+        .args([
+            "render",
+            &pdf("pdfjs-basicapi.pdf"),
+            "--svg",
+            "-o",
+            &out_path,
+        ])
+        .assert()
+        .success();
+
+    let content = std::fs::read_to_string(&out_path).expect("SVG 파일 읽기 실패");
+    assert!(
+        content.contains("<svg"),
+        "SVG 루트 태그 없음: {}",
+        &content[..content.len().min(200)]
+    );
+    assert!(content.contains("</svg>"), "SVG 닫힘 태그 없음");
+}
+
+// IT-S5: rpdf render pdfjs-basicapi.pdf --svg (PDFIUM 환경변수 없어도 동작)
+#[test]
+fn it_s5_render_svg_no_pdfium_needed() {
+    let out = tempfile::Builder::new()
+        .suffix(".svg")
+        .tempfile()
+        .expect("tempfile 생성 실패");
+    let out_path = out.path().to_string_lossy().into_owned();
+
+    rpdf()
+        .env_remove("PDFIUM_DYNAMIC_LIB_PATH")
+        .args([
+            "render",
+            &pdf("pdfjs-basicapi.pdf"),
+            "--svg",
+            "-o",
+            &out_path,
+        ])
+        .assert()
+        .success();
+}
