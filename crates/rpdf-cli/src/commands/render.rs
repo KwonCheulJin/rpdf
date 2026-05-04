@@ -16,14 +16,23 @@ pub struct RenderParams {
     pub svg: bool,
     /// `true`면 SVG에 좌표 그리드·페이지 경계·원점 마커를 추가한다 (`--svg` 전용).
     pub debug_overlay: bool,
+    /// `true`면 전체 페이지를 일괄 SVG 출력한다 (`--svg` 전용).
+    pub all_pages: bool,
 }
 
 /// `rpdf render` 서브커맨드를 실행한다.
 ///
 /// `--svg` 미지정: `PDFIUM_DYNAMIC_LIB_PATH` 환경변수 필요.
 /// `--svg` 지정: `rpdf_parser::load_document()` → `rpdf_svg::render_page_svg_with_options()` → SVG 파일 저장.
+/// `--all-pages` + `--svg`: 전체 페이지를 일괄 SVG로 출력한다.
 /// `--debug-overlay` + `--svg` 미지정: stderr에 경고를 출력하고 PNG 생성을 계속 진행한다.
 pub fn run(params: RenderParams) -> Result<()> {
+    if params.all_pages {
+        if !params.svg {
+            bail!("--all-pages requires --svg");
+        }
+        return run_svg_all_pages(params);
+    }
     if params.debug_overlay && !params.svg {
         eprintln!("Warning: --debug-overlay has no effect without --svg");
     }
@@ -114,4 +123,54 @@ fn run_svg(params: RenderParams) -> Result<()> {
     println!("{}", output_path.display());
 
     Ok(())
+}
+
+fn run_svg_all_pages(params: RenderParams) -> Result<()> {
+    use rpdf_svg::{RenderOptions, render_page_svg_with_options};
+
+    let data = std::fs::read(&params.file)
+        .with_context(|| format!("파일을 읽을 수 없습니다: {}", params.file.display()))?;
+
+    let doc = rpdf_parser::load_document(&data)
+        .with_context(|| format!("PDF 파싱 실패: {}", params.file.display()))?;
+
+    let page_count = doc.page_count();
+    if page_count == 0 {
+        eprintln!("Warning: PDF에 페이지가 없습니다");
+        return Ok(());
+    }
+
+    let stem = params
+        .file
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("output")
+        .to_owned();
+
+    let opts = RenderOptions {
+        debug_overlay: params.debug_overlay,
+    };
+
+    for i in 0..page_count {
+        let page = &doc.pages()[i];
+        let svg_content = render_page_svg_with_options(page, &opts);
+        let out_path = resolve_all_pages_output(params.output.as_deref(), &stem, i);
+        std::fs::write(&out_path, &svg_content)
+            .with_context(|| format!("SVG 저장 실패: {}", out_path.display()))?;
+        println!("{}", out_path.display());
+    }
+
+    Ok(())
+}
+
+fn resolve_all_pages_output(output: Option<&std::path::Path>, stem: &str, page: usize) -> PathBuf {
+    match output {
+        None => PathBuf::from(format!("{stem}_p{page}.svg")),
+        Some(p) if p.is_dir() => p.join(format!("p{page}.svg")),
+        Some(p) => {
+            let parent = p.parent().unwrap_or(std::path::Path::new("."));
+            let file_stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or(stem);
+            parent.join(format!("{file_stem}_p{page}.svg"))
+        }
+    }
 }

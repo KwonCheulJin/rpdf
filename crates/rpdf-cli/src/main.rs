@@ -69,6 +69,9 @@ enum Commands {
         /// SVG 출력 시 좌표 그리드·페이지 경계·원점 마커 추가 (--svg 전용).
         #[arg(long = "debug-overlay")]
         debug_overlay: bool,
+        /// 전체 페이지를 SVG로 일괄 출력한다 (--svg 전용).
+        #[arg(long = "all-pages")]
+        all_pages: bool,
     },
 }
 
@@ -104,6 +107,7 @@ fn run(cli: Cli) -> Result<()> {
             scale,
             svg,
             debug_overlay,
+            all_pages,
         } => commands::render::run(commands::render::RenderParams {
             file,
             output,
@@ -111,6 +115,7 @@ fn run(cli: Cli) -> Result<()> {
             scale,
             svg,
             debug_overlay,
+            all_pages,
         }),
     }
 }
