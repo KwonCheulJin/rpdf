@@ -1,7 +1,7 @@
 [workspace]
 resolver = "2"
 members = ["crates/rpdf-cli",
-    "crates/rpdf-core", "crates/rpdf-parser", "crates/rpdf-render", "crates/rpdf-svg",
+    "crates/rpdf-core", "crates/rpdf-edit", "crates/rpdf-parser", "crates/rpdf-render", "crates/rpdf-svg",
 ]
 
 [workspace.package]
@@ -13,6 +13,7 @@ repository = "https://github.com/KwonCheulJin/rpdf"
 
 [workspace.dependencies]
 rpdf-core = { path = "crates/rpdf-core" }
+rpdf-edit = { path = "crates/rpdf-edit" }
 rpdf-parser = { path = "crates/rpdf-parser" }
 rpdf-render = { path = "crates/rpdf-render" }
 rpdf-svg = { path = "crates/rpdf-svg" }
