@@ -73,6 +73,8 @@ private/`pub(crate)` 함수 테스트 → 인라인 `#[cfg(test)] mod internal_t
 **pnpm CI**: `pnpm/action-setup@v4`에 `version:` 키 없이 사용 — `packageManager` 필드 자동 인식.
   `version:` 추가 시 **ERR_PNPM_BAD_PM_VERSION** 충돌 → `mydocs/troubleshootings/pnpm-action-setup-version-conflict.md`
 **외부 크레이트**: docs.rs에서 공개 API 확인 완료 후 사용. 계획서에 "공개 API 확인 완료" 명시.
+**CI cargo 도구 설치**: `taiki-e/install-action@<tool-name>` 패턴 사용 (예: `taiki-e/install-action@cargo-nextest`).
+**insta 스냅샷 첫 도입**: 첫 실행 시 `.snap.new` pending 파일 생성됨 → `cargo insta accept` 또는 수동 rename. CI는 `INSTA_UPDATE=no` 환경변수 필수.
 
 손으로 만들 것: 워크스페이스 `Cargo.toml`, `pnpm-workspace.yaml`, CI yml, `CLAUDE.md`, `mydocs/`
 
@@ -102,6 +104,7 @@ private/`pub(crate)` 함수 테스트 → 인라인 `#[cfg(test)] mod internal_t
 6. **테스트** — `cargo test`, `cargo clippy`, `pnpm test` 통과 필수
 7. **완료 보고서** — `mydocs/working/task{N}-done.md`
    - ⚠️ **회고 분류 표 필수**: 트러블슈팅 후보를 A(즉시 CLAUDE.md 반영)·B(트러블슈팅 문서)·C(완료 보고서 메모)로 분류해 보고서에 포함. A 항목은 보고서 작성과 동시에 CLAUDE.md를 갱신한다.
+   - ⚠️ **자율 진행 시 회고 채집**: 매 체크포인트 끝에 `mydocs/working/task{N}-retro-notes.md`에 후보 1~2건 메모. 체크포인트 단위 메모가 누락 방지에 효과적.
 8. **회고** — `/task-retro` 실행
 9. **PR** — `devel` 브랜치로, `closes #{N}`
 

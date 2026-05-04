@@ -1,0 +1,36 @@
+---
+source: crates/rpdf-parser/tests/regression/mod.rs
+assertion_line: 120
+expression: parse_to_snapshot(& bytes)
+---
+doc:
+  page_count: 3
+  metadata:
+    title: "��\u0000B\u0000a\u0000s\u0000i\u0000c\u0000 \u0000A\u0000P\u0000I\u0000 \u0000T\u0000e\u0000s\u0000t"
+    author: "��\u0000B\u0000r\u0000e\u0000n\u0000d\u0000a\u0000n\u0000 \u0000D\u0000a\u0000h\u0000l"
+    producer: "��\u0000T\u0000C\u0000P\u0000D\u0000F\u0000 \u00005\u0000.\u00009\u0000.\u00001\u00003\u00003\u0000 \u0000(\u0000h\u0000t\u0000t\u0000p\u0000:\u0000/\u0000/\u0000w\u0000w\u0000w\u0000.\u0000t\u0000c\u0000p\u0000d\u0000f\u0000.\u0000o\u0000r\u0000g\u0000)"
+  pages:
+    - index: 0
+      media_box:
+        - 0
+        - 0
+        - 595.28
+        - 841.89
+      rotation: 0
+      op_count: 182
+    - index: 1
+      media_box:
+        - 0
+        - 0
+        - 595.28
+        - 841.89
+      rotation: 0
+      op_count: 114
+    - index: 2
+      media_box:
+        - 0
+        - 0
+        - 595.28
+        - 841.89
+      rotation: 0
+      op_count: 133

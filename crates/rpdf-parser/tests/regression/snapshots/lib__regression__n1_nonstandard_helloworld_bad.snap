@@ -1,0 +1,6 @@
+---
+source: crates/rpdf-parser/tests/regression/mod.rs
+assertion_line: 158
+expression: parse_to_snapshot(& bytes)
+---
+error: "InvalidXrefAtOffset { offset: 492, found: \"12 Tf\\r\\n(Hello, w\" }"
