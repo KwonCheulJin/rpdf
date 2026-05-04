@@ -2,7 +2,7 @@ use std::sync::Mutex;
 
 use rpdf_core::types::document::{Document, Page};
 
-use crate::commands::{Command, CommandError};
+use crate::commands::{Command, CommandError, reindex_pages};
 
 /// 지정한 페이지 인덱스 목록을 Document에서 제거하는 커맨드.
 ///
@@ -83,9 +83,7 @@ impl Command for DeletePagesCommand {
         *self.snapshot.lock().unwrap() = Some(removed);
 
         // 5. 남은 페이지 index 재정렬
-        for (i, page) in doc.pages.iter_mut().enumerate() {
-            page.index = i;
-        }
+        reindex_pages(&mut doc.pages);
 
         Ok(())
     }
@@ -103,9 +101,7 @@ impl Command for DeletePagesCommand {
         }
 
         // 3. 전체 페이지 index 재정렬
-        for (i, page) in doc.pages.iter_mut().enumerate() {
-            page.index = i;
-        }
+        reindex_pages(&mut doc.pages);
 
         Ok(())
     }
