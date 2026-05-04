@@ -39,6 +39,15 @@ PDF 스펙(ISO 32000) 용어를 코드에 그대로 반영한다.
 > 악성 입력 `[1, 100, 2]`가 들어오면 u64 읽기 시 silent truncation으로 잘못된 엔트리 디코딩.
 > → `W[i] > 8` 조건을 명시적으로 거부하고 `XrefStreamInvalidW` 반환.
 
+### 스택 기반 상태 관리 (Save/Restore)
+
+상태 스택(q/Q, pushMatrix 등)과 연동된 보조 트래커가 있을 때,
+`SaveState` 처리 시 열려 있는 보조 트래커 상태를 먼저 닫은 뒤 push한다.
+
+> **사례**: rpdf-svg의 `loose_cm_depth` — `SaveState(q)` 처리 시 리셋만 하고
+> 열린 `<g transform>` 태그를 닫지 않아 `cm → q` 패턴 PDF에서 SVG 구조 파손.
+> → `SaveState` 진입 전에 `for _ in 0..loose_cm_depth { out.push_str("</g>\n"); }` 실행.
+
 ### 테스트 파일 배치
 
 공개 API 테스트 → `tests/parser/<module>_tests.rs` (별도 파일). 새 모듈 추가 시 `mod.rs`에 등록.
