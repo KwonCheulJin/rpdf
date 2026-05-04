@@ -74,7 +74,7 @@ private/`pub(crate)` 함수 테스트 → 인라인 `#[cfg(test)] mod internal_t
   `version:` 추가 시 **ERR_PNPM_BAD_PM_VERSION** 충돌 → `mydocs/troubleshootings/pnpm-action-setup-version-conflict.md`
 **외부 크레이트**: docs.rs에서 공개 API 확인 완료 후 사용. 계획서에 "공개 API 확인 완료" 명시.
 **CI cargo 도구 설치**: `taiki-e/install-action@<tool-name>` 패턴 사용 (예: `taiki-e/install-action@cargo-nextest`).
-**insta 스냅샷 첫 도입**: 첫 실행 시 `.snap.new` pending 파일 생성됨 → `cargo insta accept` 또는 수동 rename. CI는 `INSTA_UPDATE=no` 환경변수 필수.
+**insta 스냅샷 첫 도입**: 첫 실행 시 `*.snap.new` pending 파일 생성됨 → `cargo insta accept` 또는 수동 rename. CI는 `INSTA_UPDATE=no` 환경변수 필수.
 
 손으로 만들 것: 워크스페이스 `Cargo.toml`, `pnpm-workspace.yaml`, CI yml, `CLAUDE.md`, `mydocs/`
 
@@ -166,7 +166,7 @@ closes #{N}
 1. `rpdf info <file>` — 메타데이터 확인
 2. `rpdf dump <file> -p <page>` — 페이지 IR 덤프
 3. `rpdf export-svg <file> --debug-overlay` — 시각적 디버그
-4. 재현 케이스 → `tests/regression/`에 추가
+4. 재현 케이스 → `crates/rpdf-parser/tests/regression/`에 추가
 5. 수정 후 동일 케이스 통과 확인
 
 ## 파일 명명 규칙

@@ -63,6 +63,40 @@ closes #{번호}
 - TypeScript: 프로젝트 `.prettierrc` 준수
 - import 순서: 표준 라이브러리 → 외부 크레이트 → 내부 모듈
 
+## 네이밍 규칙
+
+PDF 스펙(ISO 32000) 용어를 코드에 그대로 반영한다.
+
+| 개념 | 올바른 이름 | 피해야 할 이름 |
+|------|------------|---------------|
+| xref 테이블 | `XrefTable` | `CrossReferenceTable` |
+| trailer 딕셔너리 | `PdfTrailer` | `PdfFooter`, `TrailerDict` |
+| 오브젝트 참조 | `ObjRef` | `ObjectReference`, `PdfRef` |
+| 페이지 미디어 박스 | `media_box` | `page_bounds`, `page_rect` |
+
+## 알려진 Gotcha (이미 빠진 함정)
+
+### pdfium-render 버전 ↔ 빌드번호 미스매치
+- **증상**: 런타임 `symbol not found` 또는 `cannot open shared object file`
+- **원인**: pdfium-render 버전과 PDFium 바이너리 빌드번호가 맞지 않음
+- **해결**: `scripts/CLAUDE.md` 호환표 확인 후 `fetch-pdfium.sh`의 `PDFIUM_BUILD` 동기화
+
+### macOS Gatekeeper quarantine
+- **증상**: `libpdfium.dylib cannot be opened because the developer cannot be verified`
+- **해결**: `scripts/fetch-pdfium.sh`가 자동 해제 (`xattr -d com.apple.quarantine`)
+
+### insta 스냅샷 첫 도입
+- **증상**: CI에서 스냅샷 불일치 오류 (`*.snap.new` 파일만 생성, `.snap` 없음)
+- **해결**: 로컬에서 `cargo insta accept` 실행 후 `.snap` 파일 커밋
+
+### `rpdf-core`에 파싱 로직 추가 금지
+- `rpdf-core`는 값 객체(`Copy + Clone + PartialEq + Eq`)만 — 파싱은 `rpdf-parser`
+- 위반 시 WASM 타겟에서 링크 오류 발생 가능
+
+### `PDFIUM_DYNAMIC_LIB_PATH`는 파일이 아닌 디렉토리
+- 올바름: `export PDFIUM_DYNAMIC_LIB_PATH=$(pwd)/pdfium/lib`
+- 잘못됨: `export PDFIUM_DYNAMIC_LIB_PATH=$(pwd)/pdfium/lib/libpdfium.dylib`
+
 ## 라이선스
 
 기여한 코드는 MIT 라이선스로 배포됩니다.

@@ -1,7 +1,7 @@
 # 페이지 트리 순환 참조 → 스택 오버플로우
 
 **발견 시점**: Task #10 (회귀 테스트 인프라), 2026-05-04  
-**발견 경로**: `samples/trad-xref-pages-tree-refs.pdf` 스냅샷 테스트 실행 중
+**발견 경로**: 순환 참조 PDF 스냅샷 테스트 실행 중 (`trad-xref-pages-tree-refs.pdf`는 교체됨 → `samples/trad-xref-issue1155r.pdf`)
 
 ## 현상
 
