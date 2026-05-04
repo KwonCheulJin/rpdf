@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use rpdf_core::types::Page;
-use rpdf_svg::render_page_svg;
+use rpdf_svg::{RenderOptions, render_page_svg, render_page_svg_with_options};
 
 fn examples_path(name: &str) -> std::path::PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -80,5 +80,44 @@ fn it_s5_y_flip_transform_present() {
         svg.contains("matrix(1 0 0 -1 0"),
         "Y축 반전 transform 없음: {}",
         svg
+    );
+}
+
+// IT-D1: debug_overlay: true → id="debug-overlay" 포함
+#[test]
+fn it_d1_debug_overlay_true_contains_overlay_group() {
+    let page = load_first_page("pdfjs-basicapi.pdf");
+    let opts = RenderOptions {
+        debug_overlay: true,
+    };
+    let svg = render_page_svg_with_options(&page, &opts);
+    assert!(
+        svg.contains("id=\"debug-overlay\""),
+        "debug-overlay 그룹 없음: {}",
+        &svg[..svg.len().min(500)]
+    );
+}
+
+// IT-D2: RenderOptions::default() → id="debug-overlay" 미포함
+#[test]
+fn it_d2_debug_overlay_default_no_overlay_group() {
+    let page = load_first_page("pdfjs-basicapi.pdf");
+    let opts = RenderOptions::default();
+    let svg = render_page_svg_with_options(&page, &opts);
+    assert!(
+        !svg.contains("id=\"debug-overlay\""),
+        "기본 옵션인데 debug-overlay 그룹이 있음"
+    );
+}
+
+// IT-D3: render_page_svg() 와 render_page_svg_with_options(default) 결과 동일
+#[test]
+fn it_d3_render_page_svg_equiv_default_options() {
+    let page = load_first_page("pdfjs-basicapi.pdf");
+    let svg_legacy = render_page_svg(&page);
+    let svg_opts = render_page_svg_with_options(&page, &RenderOptions::default());
+    assert_eq!(
+        svg_legacy, svg_opts,
+        "render_page_svg()와 render_page_svg_with_options(default) 결과가 다름"
     );
 }

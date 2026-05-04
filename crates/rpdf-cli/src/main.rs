@@ -66,6 +66,9 @@ enum Commands {
         /// SVG 출력 모드 (pdfium 불필요).
         #[arg(long = "svg")]
         svg: bool,
+        /// SVG 출력 시 좌표 그리드·페이지 경계·원점 마커 추가 (--svg 전용).
+        #[arg(long = "debug-overlay")]
+        debug_overlay: bool,
     },
 }
 
@@ -100,12 +103,14 @@ fn run(cli: Cli) -> Result<()> {
             page,
             scale,
             svg,
+            debug_overlay,
         } => commands::render::run(commands::render::RenderParams {
             file,
             output,
             page,
             scale,
             svg,
+            debug_overlay,
         }),
     }
 }
