@@ -43,6 +43,27 @@ jobs:
         env:
           INSTA_UPDATE: "no"
 
+      - name: Run image regression tests
+        run: |
+          PDFIUM_DYNAMIC_LIB_PATH=$(pwd)/pdfium/lib \
+          cargo nextest run -p rpdf-render -- image_regression
+
+      - name: Upload diff artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: image-diff-${{ runner.os }}
+          path: /tmp/rpdf-diff/
+          retention-days: 7
+
+      - name: Upload linux snapshots for first-run commit
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: snapshots-linux-${{ github.sha }}
+          path: crates/rpdf-render/tests/snapshots/linux/
+          retention-days: 3
+
   node:
     name: Node (install)
     runs-on: ubuntu-latest
