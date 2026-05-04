@@ -78,6 +78,7 @@ private/`pub(crate)` 함수 테스트 → 인라인 `#[cfg(test)] mod internal_t
   - `[[bin]] name = "<실행파일명>"` — crate name(`rpdf-cli`)과 binary name(`rpdf`)이 다르면 Cargo.toml에 명시 필수.
   - `use serde::Serialize`처럼 serde를 직접 임포트 시, `serde_json`만으론 부족 — workspace `serde`를 별도 선언해야 컴파일됨.
   - 통합 테스트에서 `assert_cmd` 사용 시 `predicates`도 dev-dependency에 추가 필요 (assert_cmd가 re-export 안 함).
+  - CLI 에러는 `bail!` 또는 `?`로 전파한다 — `process::exit(1)` 직접 호출 금지. `main()`의 `ExitCode::FAILURE` 경로를 통해야 일관된 에러 메시지 출력이 보장됨.
 **gitignore**: `curl -L https://www.toptal.com/developers/gitignore/api/rust,node,macos,linux > .gitignore`
 **pnpm CI**: `pnpm/action-setup@v4`에 `version:` 키 없이 사용 — `packageManager` 필드 자동 인식.
   `version:` 추가 시 **ERR_PNPM_BAD_PM_VERSION** 충돌 → `mydocs/troubleshootings/pnpm-action-setup-version-conflict.md`
@@ -122,6 +123,7 @@ private/`pub(crate)` 함수 테스트 → 인라인 `#[cfg(test)] mod internal_t
 - [ ] 외부 크레이트를 새로 도입한다면 docs.rs에서 공개 API 확인 완료?
 - [ ] 새 에러 변형을 추가한다면 그 에러를 발생시키는 테스트가 있는가?
 - [ ] **마이그레이션·리팩토링 범위 확정 전, 대상 모듈을 import하는 모든 파일을 grep으로 파악했는가?**
+- [ ] 테스트에 PDF fixture를 사용한다면 `rpdf info <file>`로 페이지 수·메타데이터를 먼저 확인했는가? (가정에 의존하면 테스트 조건이 틀릴 수 있음)
 
 ## 작업 프로토콜
 
