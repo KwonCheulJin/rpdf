@@ -59,7 +59,7 @@ Q
 
 ---
 
-## 연산자 분류 표 (ISO 32000 §8~§9, 총 73개)
+## 연산자 분류 표 (ISO 32000 §8~§9, PDF 키워드 71개 / enum 변형 69개)
 
 | 그룹 | PDF 키워드 | enum 변형 |
 |-----|---------|---------|
@@ -89,7 +89,7 @@ Q
 **Q1. `ContentStreamOperator`를 하나의 flat enum으로 vs 그룹별 enum으로?**
 
 → **단일 flat enum** 선택.
-- 73개 변형은 하나의 `match`로 소화 가능. 그룹 분기는 메서드(`is_text()` 등)로 표현.
+- 69개 enum 변형은 하나의 `match`로 소화 가능. 그룹 분기는 메서드(`is_text()` 등)로 표현.
 - 그룹별 enum은 이중 래핑(`ContentStreamOperation::Text(TextOperator)`)을 강제하며, Task #8 소비자가 더 번거롭다. KISS 원칙 준수.
 
 **Q2. 피연산자를 `Vec<PdfObject>`로 vs 연산자별 구체 타입으로?**
