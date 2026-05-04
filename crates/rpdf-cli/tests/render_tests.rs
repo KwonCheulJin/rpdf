@@ -224,3 +224,145 @@ fn it_d5_debug_overlay_without_svg_warns() {
             .stderr(predicates::str::contains("Warning:"));
     }
 }
+
+// IT-A1: --svg --all-pages fw4-2024.pdf → 여러 .svg 생성 (파일 개수 == 페이지 수)
+#[test]
+fn it_a1_all_pages_creates_multiple_svg_files() {
+    let dir = tempfile::tempdir().expect("tempdir 생성 실패");
+    let stem = dir.path().join("fw4");
+    let stem_str = stem.to_string_lossy().into_owned();
+
+    rpdf()
+        .args([
+            "render",
+            &pdf("fw4-2024.pdf"),
+            "--svg",
+            "--all-pages",
+            "-o",
+            &format!("{}.svg", stem_str),
+        ])
+        .assert()
+        .success();
+
+    // fw4-2024.pdf 페이지 수만큼 파일이 생성되어야 함 (최소 1개 이상)
+    let created: Vec<_> = std::fs::read_dir(dir.path())
+        .expect("디렉토리 읽기 실패")
+        .filter_map(|e| e.ok())
+        .filter(|e| {
+            e.path()
+                .extension()
+                .and_then(|x| x.to_str())
+                .map(|x| x == "svg")
+                .unwrap_or(false)
+        })
+        .collect();
+
+    assert!(!created.is_empty(), "SVG 파일이 하나도 생성되지 않았습니다");
+}
+
+// IT-A2: --svg --all-pages -o <tempdir>/ → 디렉토리에 p0.svg, p1.svg, ... 생성
+#[test]
+fn it_a2_all_pages_output_to_directory() {
+    let dir = tempfile::tempdir().expect("tempdir 생성 실패");
+    let dir_path = dir.path().to_string_lossy().into_owned();
+
+    rpdf()
+        .args([
+            "render",
+            &pdf("fw4-2024.pdf"),
+            "--svg",
+            "--all-pages",
+            "-o",
+            &dir_path,
+        ])
+        .assert()
+        .success();
+
+    let p0 = dir.path().join("p0.svg");
+    assert!(p0.exists(), "p0.svg가 생성되지 않았습니다");
+
+    let content = std::fs::read_to_string(&p0).expect("p0.svg 읽기 실패");
+    assert!(content.contains("<svg"), "p0.svg에 <svg 태그 없음");
+}
+
+// IT-A3: --all-pages (--svg 없음) → exit 1
+#[test]
+fn it_a3_all_pages_without_svg_fails() {
+    rpdf()
+        .args(["render", &pdf("pdfjs-basicapi.pdf"), "--all-pages"])
+        .assert()
+        .failure();
+}
+
+// IT-A4: 단일 페이지 PDF + --svg --all-pages → 파일 1개만 생성
+#[test]
+fn it_a4_all_pages_single_page_pdf_creates_one_file() {
+    let dir = tempfile::tempdir().expect("tempdir 생성 실패");
+    let out_svg = dir.path().join("single.svg");
+    let out_str = out_svg.to_string_lossy().into_owned();
+
+    rpdf()
+        .args([
+            "render",
+            &pdf("pdfjs-annotation-border.pdf"),
+            "--svg",
+            "--all-pages",
+            "-o",
+            &out_str,
+        ])
+        .assert()
+        .success();
+
+    // pdfjs-annotation-border.pdf는 단일 페이지 → single_p0.svg 1개만 생성
+    let created: Vec<_> = std::fs::read_dir(dir.path())
+        .expect("디렉토리 읽기 실패")
+        .filter_map(|e| e.ok())
+        .filter(|e| {
+            e.path()
+                .extension()
+                .and_then(|x| x.to_str())
+                .map(|x| x == "svg")
+                .unwrap_or(false)
+        })
+        .collect();
+
+    assert_eq!(
+        created.len(),
+        1,
+        "단일 페이지 PDF이므로 파일이 1개여야 함: {:?}",
+        created
+    );
+}
+
+// IT-A5: --svg --all-pages -o /tmp/out.svg → /tmp/out_p0.svg, /tmp/out_p1.svg, ... 생성
+#[test]
+fn it_a5_all_pages_with_output_prefix_svg() {
+    let dir = tempfile::tempdir().expect("tempdir 생성 실패");
+    let out_path = dir.path().join("out.svg");
+    let out_str = out_path.to_string_lossy().into_owned();
+
+    rpdf()
+        .args([
+            "render",
+            &pdf("fw4-2024.pdf"),
+            "--svg",
+            "--all-pages",
+            "-o",
+            &out_str,
+        ])
+        .assert()
+        .success();
+
+    let p0 = dir.path().join("out_p0.svg");
+    assert!(
+        p0.exists(),
+        "out_p0.svg가 생성되지 않았습니다: {:?}",
+        dir.path().read_dir().ok().map(|d| d
+            .filter_map(|e| e.ok())
+            .map(|e| e.path())
+            .collect::<Vec<_>>())
+    );
+
+    let content = std::fs::read_to_string(&p0).expect("out_p0.svg 읽기 실패");
+    assert!(content.contains("<svg"), "out_p0.svg에 <svg 태그 없음");
+}
