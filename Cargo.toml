@@ -14,6 +14,7 @@ repository = "https://github.com/KwonCheulJin/rpdf"
 [workspace.dependencies]
 rpdf-core = { path = "crates/rpdf-core" }
 rpdf-parser = { path = "crates/rpdf-parser" }
+rpdf-render = { path = "crates/rpdf-render" }
 thiserror = "2"
 anyhow = "1"
 tracing = "0.1"
