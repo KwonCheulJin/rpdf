@@ -200,3 +200,199 @@ impl ContentStreamOperation {
         }
     }
 }
+
+impl ContentStreamOperator {
+    /// PDF 스펙 키워드를 반환한다 (`&'static str`).
+    ///
+    /// `rpdf dump` 출력 및 PDF 스펙 대조 목적. `Debug` 포맷과 별개.
+    /// `Unknown` 변형은 `"?"` 반환 — raw bytes 포함 표현은 [`display_name`] 사용.
+    pub fn pdf_keyword(&self) -> &'static str {
+        match self {
+            Self::BeginText => "BT",
+            Self::EndText => "ET",
+            Self::SetCharSpacing => "Tc",
+            Self::SetWordSpacing => "Tw",
+            Self::SetHorizontalScale => "Tz",
+            Self::SetLeading => "TL",
+            Self::SetFont => "Tf",
+            Self::SetRenderingMode => "Tr",
+            Self::SetTextRise => "Ts",
+            Self::MoveText => "Td",
+            Self::MoveTextSetLeading => "TD",
+            Self::SetTextMatrix => "Tm",
+            Self::MoveToNextLine => "T*",
+            Self::ShowText => "Tj",
+            Self::ShowTextAdjusted => "TJ",
+            Self::MoveShowText => "'",
+            Self::MoveSetShowText => "\"",
+            Self::SaveState => "q",
+            Self::RestoreState => "Q",
+            Self::ConcatMatrix => "cm",
+            Self::SetLineWidth => "w",
+            Self::SetLineCap => "J",
+            Self::SetLineJoin => "j",
+            Self::SetMiterLimit => "M",
+            Self::SetDashPattern => "d",
+            Self::SetFlatness => "i",
+            Self::SetGraphicsState => "gs",
+            Self::SetRenderingIntent => "ri",
+            Self::MoveTo => "m",
+            Self::LineTo => "l",
+            Self::CurveTo => "c",
+            Self::CurveToV => "v",
+            Self::CurveToY => "y",
+            Self::ClosePath => "h",
+            Self::Rect => "re",
+            Self::Stroke => "S",
+            Self::CloseStroke => "s",
+            Self::Fill => "f",
+            Self::FillObsolete => "F",
+            Self::FillEvenOdd => "f*",
+            Self::FillStroke => "B",
+            Self::FillStrokeEvenOdd => "B*",
+            Self::CloseFillStroke => "b",
+            Self::CloseFillStrokeEvenOdd => "b*",
+            Self::EndPath => "n",
+            Self::Clip => "W",
+            Self::ClipEvenOdd => "W*",
+            Self::SetStrokeColorSpace => "CS",
+            Self::SetFillColorSpace => "cs",
+            Self::SetStrokeColor => "SC",
+            Self::SetStrokeColorN => "SCN",
+            Self::SetFillColor => "sc",
+            Self::SetFillColorN => "scn",
+            Self::SetStrokeGray => "G",
+            Self::SetFillGray => "g",
+            Self::SetStrokeRGB => "RG",
+            Self::SetFillRGB => "rg",
+            Self::SetStrokeCMYK => "K",
+            Self::SetFillCMYK => "k",
+            Self::InvokeXObject => "Do",
+            Self::Shading => "sh",
+            Self::InlineImage => "BI/ID/EI",
+            Self::MarkedContentPoint => "MP",
+            Self::MarkedContentPointProp => "DP",
+            Self::BeginMarkedContent => "BMC",
+            Self::BeginMarkedContentProp => "BDC",
+            Self::EndMarkedContent => "EMC",
+            Self::BeginCompatibility => "BX",
+            Self::EndCompatibility => "EX",
+            Self::Unknown(_) => "?",
+        }
+    }
+
+    /// 사용자 출력용 표현을 반환한다.
+    ///
+    /// 대부분의 변형은 [`pdf_keyword`]와 동일하지만, `Unknown` 변형은
+    /// raw bytes를 포함한 `"?<bytes>"` 형식의 `String`을 반환한다.
+    pub fn display_name(&self) -> String {
+        match self {
+            Self::Unknown(bytes) => format!("?{}", String::from_utf8_lossy(bytes)),
+            other => other.pdf_keyword().to_string(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod internal_tests {
+    use super::*;
+
+    // BT-1: BeginText.pdf_keyword() == "BT"
+    #[test]
+    fn bt1_begin_text_keyword() {
+        assert_eq!(ContentStreamOperator::BeginText.pdf_keyword(), "BT");
+    }
+
+    // BT-2: EndText.display_name() == "ET"
+    #[test]
+    fn bt2_end_text_display_name() {
+        assert_eq!(ContentStreamOperator::EndText.display_name(), "ET");
+    }
+
+    // BT-3: Unknown raw bytes 포함 display_name
+    #[test]
+    fn bt3_unknown_display_name_includes_raw_bytes() {
+        let op = ContentStreamOperator::Unknown(b"foo".to_vec());
+        assert_eq!(op.display_name(), "?foo");
+    }
+
+    // BT-4: 모든 비-Unknown 변형의 pdf_keyword()가 빈 문자열 아님
+    #[test]
+    fn bt4_all_known_operators_have_nonempty_keyword() {
+        let known: &[ContentStreamOperator] = &[
+            ContentStreamOperator::BeginText,
+            ContentStreamOperator::EndText,
+            ContentStreamOperator::SetCharSpacing,
+            ContentStreamOperator::SetWordSpacing,
+            ContentStreamOperator::SetHorizontalScale,
+            ContentStreamOperator::SetLeading,
+            ContentStreamOperator::SetFont,
+            ContentStreamOperator::SetRenderingMode,
+            ContentStreamOperator::SetTextRise,
+            ContentStreamOperator::MoveText,
+            ContentStreamOperator::MoveTextSetLeading,
+            ContentStreamOperator::SetTextMatrix,
+            ContentStreamOperator::MoveToNextLine,
+            ContentStreamOperator::ShowText,
+            ContentStreamOperator::ShowTextAdjusted,
+            ContentStreamOperator::MoveShowText,
+            ContentStreamOperator::MoveSetShowText,
+            ContentStreamOperator::SaveState,
+            ContentStreamOperator::RestoreState,
+            ContentStreamOperator::ConcatMatrix,
+            ContentStreamOperator::SetLineWidth,
+            ContentStreamOperator::SetLineCap,
+            ContentStreamOperator::SetLineJoin,
+            ContentStreamOperator::SetMiterLimit,
+            ContentStreamOperator::SetDashPattern,
+            ContentStreamOperator::SetFlatness,
+            ContentStreamOperator::SetGraphicsState,
+            ContentStreamOperator::SetRenderingIntent,
+            ContentStreamOperator::MoveTo,
+            ContentStreamOperator::LineTo,
+            ContentStreamOperator::CurveTo,
+            ContentStreamOperator::CurveToV,
+            ContentStreamOperator::CurveToY,
+            ContentStreamOperator::ClosePath,
+            ContentStreamOperator::Rect,
+            ContentStreamOperator::Stroke,
+            ContentStreamOperator::CloseStroke,
+            ContentStreamOperator::Fill,
+            ContentStreamOperator::FillObsolete,
+            ContentStreamOperator::FillEvenOdd,
+            ContentStreamOperator::FillStroke,
+            ContentStreamOperator::FillStrokeEvenOdd,
+            ContentStreamOperator::CloseFillStroke,
+            ContentStreamOperator::CloseFillStrokeEvenOdd,
+            ContentStreamOperator::EndPath,
+            ContentStreamOperator::Clip,
+            ContentStreamOperator::ClipEvenOdd,
+            ContentStreamOperator::SetStrokeColorSpace,
+            ContentStreamOperator::SetFillColorSpace,
+            ContentStreamOperator::SetStrokeColor,
+            ContentStreamOperator::SetStrokeColorN,
+            ContentStreamOperator::SetFillColor,
+            ContentStreamOperator::SetFillColorN,
+            ContentStreamOperator::SetStrokeGray,
+            ContentStreamOperator::SetFillGray,
+            ContentStreamOperator::SetStrokeRGB,
+            ContentStreamOperator::SetFillRGB,
+            ContentStreamOperator::SetStrokeCMYK,
+            ContentStreamOperator::SetFillCMYK,
+            ContentStreamOperator::InvokeXObject,
+            ContentStreamOperator::Shading,
+            ContentStreamOperator::InlineImage,
+            ContentStreamOperator::MarkedContentPoint,
+            ContentStreamOperator::MarkedContentPointProp,
+            ContentStreamOperator::BeginMarkedContent,
+            ContentStreamOperator::BeginMarkedContentProp,
+            ContentStreamOperator::EndMarkedContent,
+            ContentStreamOperator::BeginCompatibility,
+            ContentStreamOperator::EndCompatibility,
+        ];
+        for op in known {
+            let kw = op.pdf_keyword();
+            assert!(!kw.is_empty(), "{op:?} has empty pdf_keyword");
+        }
+    }
+}
