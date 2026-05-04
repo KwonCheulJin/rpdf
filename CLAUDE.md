@@ -64,7 +64,11 @@ private/`pub(crate)` 함수 테스트 → 인라인 `#[cfg(test)] mod internal_t
 2. 검증된 서드파티 CLI (`gitignore.io`, `wasm-pack`)
 3. 위 둘 없을 때만 손으로 작성
 
-**cargo**: `cargo new --lib crates/<name> --vcs none` (`--vcs none` 필수). 의존성 추가는 `cargo add`.
+**cargo lib**: `cargo new --lib crates/<name> --vcs none` (`--vcs none` 필수). 의존성 추가는 `cargo add`.
+**cargo binary**: `cargo new --bin crates/<name> --vcs none`
+  - `[[bin]] name = "<실행파일명>"` — crate name(`rpdf-cli`)과 binary name(`rpdf`)이 다르면 Cargo.toml에 명시 필수.
+  - `use serde::Serialize`처럼 serde를 직접 임포트 시, `serde_json`만으론 부족 — workspace `serde`를 별도 선언해야 컴파일됨.
+  - 통합 테스트에서 `assert_cmd` 사용 시 `predicates`도 dev-dependency에 추가 필요 (assert_cmd가 re-export 안 함).
 **gitignore**: `curl -L https://www.toptal.com/developers/gitignore/api/rust,node,macos,linux > .gitignore`
 **pnpm CI**: `pnpm/action-setup@v4`에 `version:` 키 없이 사용 — `packageManager` 필드 자동 인식.
   `version:` 추가 시 **ERR_PNPM_BAD_PM_VERSION** 충돌 → `mydocs/troubleshootings/pnpm-action-setup-version-conflict.md`
@@ -97,6 +101,7 @@ private/`pub(crate)` 함수 테스트 → 인라인 `#[cfg(test)] mod internal_t
 5. **구현** — 계획서대로. 계획 외 변경 시 계획서 먼저 수정.
 6. **테스트** — `cargo test`, `cargo clippy`, `pnpm test` 통과 필수
 7. **완료 보고서** — `mydocs/working/task{N}-done.md`
+   - ⚠️ **회고 분류 표 필수**: 트러블슈팅 후보를 A(즉시 CLAUDE.md 반영)·B(트러블슈팅 문서)·C(완료 보고서 메모)로 분류해 보고서에 포함. A 항목은 보고서 작성과 동시에 CLAUDE.md를 갱신한다.
 8. **회고** — `/task-retro` 실행
 9. **PR** — `devel` 브랜치로, `closes #{N}`
 

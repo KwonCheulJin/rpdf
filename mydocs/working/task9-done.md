@@ -94,7 +94,7 @@ $ rpdf dump -p 0 examples/irs-f1040.pdf | head -5
 - [x] 범위 초과 `-p 99` → exit 1 + 에러 메시지 (IT-D3, IT-E5)
 - [x] proptest: 임의 바이트 입력 → panic/abort 없음
 - [x] vacuous pass 없음: BT 실제 존재 확인 (IT-E1)
-- [x] `pdf_keyword()` 전체 66개 변형 매핑 → BT-4 전수 검증
+- [x] `pdf_keyword()` 전체 69개 enum 변형 (Unknown 제외) 매핑 → BT-4 전수 검증
 
 ## 회고 분류
 
