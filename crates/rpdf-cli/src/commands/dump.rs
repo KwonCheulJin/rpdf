@@ -145,8 +145,8 @@ mod tests {
             JsonValue::Number(42.into())
         );
         assert_eq!(
-            operand_to_json_value(&PdfObject::Real(3.14)),
-            JsonValue::Number(serde_json::Number::from_f64(3.14).unwrap())
+            operand_to_json_value(&PdfObject::Real(1.5)),
+            JsonValue::Number(serde_json::Number::from_f64(1.5).unwrap())
         );
         assert_eq!(
             operand_to_json_value(&PdfObject::Name(b"F1".to_vec())),
