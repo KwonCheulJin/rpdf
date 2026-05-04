@@ -1,9 +1,11 @@
+mod overlay;
 mod path;
 mod state;
 mod text;
 
 use rpdf_core::types::{ContentStreamOperator, Page, PdfObject};
 
+use overlay::build_overlay;
 use path::PathBuilder;
 use state::{Color, StateStack};
 use text::TextState;
@@ -12,17 +14,38 @@ use text::TextState;
 const A4_WIDTH: f64 = 595.0;
 const A4_HEIGHT: f64 = 842.0;
 
+/// 렌더링 옵션.
+#[derive(Default)]
+pub struct RenderOptions {
+    /// `true`면 페이지 경계·좌표 그리드·원점 마커를 SVG에 추가한다.
+    pub debug_overlay: bool,
+}
+
 /// `Page` IR을 SVG 문자열로 렌더링한다.
 ///
 /// - media_box가 없으면 A4 크기(595 × 842 pt)를 기본값으로 사용한다.
 /// - 지원하지 않는 연산자는 SVG 주석으로 기록하고 계속 진행한다.
 /// - 빈 content 페이지도 유효한 `<svg>` 루트를 반환한다 (에러 아님).
 pub fn render_page_svg(page: &Page) -> String {
+    render_page_svg_with_options(page, &RenderOptions::default())
+}
+
+/// 옵션을 지정해 `Page` IR을 SVG 문자열로 렌더링한다.
+///
+/// `opts.debug_overlay`가 `true`면 페이지 경계·좌표 그리드·원점 마커를
+/// y-flip 그룹 **바깥**의 독립 레이어에 추가한다.
+pub fn render_page_svg_with_options(page: &Page, opts: &RenderOptions) -> String {
     let (w, h) = viewport(page);
     let body = render_body(page);
 
+    let overlay_str = if opts.debug_overlay {
+        build_overlay(w, h)
+    } else {
+        String::new()
+    };
+
     format!(
-        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{w}\" height=\"{h}\" viewBox=\"0 0 {w} {h}\">\n<g transform=\"matrix(1 0 0 -1 0 {h})\">\n{body}</g>\n</svg>",
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{w}\" height=\"{h}\" viewBox=\"0 0 {w} {h}\">\n<g transform=\"matrix(1 0 0 -1 0 {h})\">\n{body}</g>\n{overlay_str}</svg>",
         w = fmt_f64(w),
         h = fmt_f64(h),
     )

@@ -14,13 +14,19 @@ pub struct RenderParams {
     pub scale: f32,
     /// SVG 출력 모드. `true`면 pdfium 불필요.
     pub svg: bool,
+    /// `true`면 SVG에 좌표 그리드·페이지 경계·원점 마커를 추가한다 (`--svg` 전용).
+    pub debug_overlay: bool,
 }
 
 /// `rpdf render` 서브커맨드를 실행한다.
 ///
 /// `--svg` 미지정: `PDFIUM_DYNAMIC_LIB_PATH` 환경변수 필요.
-/// `--svg` 지정: `rpdf_parser::load_document()` → `rpdf_svg::render_page_svg()` → SVG 파일 저장.
+/// `--svg` 지정: `rpdf_parser::load_document()` → `rpdf_svg::render_page_svg_with_options()` → SVG 파일 저장.
+/// `--debug-overlay` + `--svg` 미지정: stderr에 경고를 출력하고 PNG 생성을 계속 진행한다.
 pub fn run(params: RenderParams) -> Result<()> {
+    if params.debug_overlay && !params.svg {
+        eprintln!("Warning: --debug-overlay has no effect without --svg");
+    }
     if params.svg {
         run_svg(params)
     } else {
@@ -68,7 +74,7 @@ fn run_png(params: RenderParams) -> Result<()> {
 }
 
 fn run_svg(params: RenderParams) -> Result<()> {
-    use rpdf_svg::render_page_svg;
+    use rpdf_svg::{RenderOptions, render_page_svg_with_options};
 
     let data = std::fs::read(&params.file)
         .with_context(|| format!("파일을 읽을 수 없습니다: {}", params.file.display()))?;
@@ -85,7 +91,10 @@ fn run_svg(params: RenderParams) -> Result<()> {
         )
     })?;
 
-    let svg_content = render_page_svg(page);
+    let opts = RenderOptions {
+        debug_overlay: params.debug_overlay,
+    };
+    let svg_content = render_page_svg_with_options(page, &opts);
 
     let output_path = match params.output {
         Some(p) => p,

@@ -165,3 +165,62 @@ fn it_s5_render_svg_no_pdfium_needed() {
         .assert()
         .success();
 }
+
+// IT-D4: rpdf render pdfjs-basicapi.pdf --svg --debug-overlay → id="debug-overlay" 포함
+#[test]
+fn it_d4_render_svg_debug_overlay_contains_overlay_group() {
+    let out = tempfile::Builder::new()
+        .suffix(".svg")
+        .tempfile()
+        .expect("tempfile 생성 실패");
+    let out_path = out.path().to_string_lossy().into_owned();
+
+    rpdf()
+        .args([
+            "render",
+            &pdf("pdfjs-basicapi.pdf"),
+            "--svg",
+            "--debug-overlay",
+            "-o",
+            &out_path,
+        ])
+        .assert()
+        .success();
+
+    let content = std::fs::read_to_string(&out_path).expect("SVG 파일 읽기 실패");
+    assert!(
+        content.contains("id=\"debug-overlay\""),
+        "debug-overlay 그룹 없음: {}",
+        &content[..content.len().min(500)]
+    );
+}
+
+// IT-D5: rpdf render pdfjs-basicapi.pdf --debug-overlay (--svg 없음) → stderr에 Warning: 포함
+#[test]
+fn it_d5_debug_overlay_without_svg_warns() {
+    if !has_pdfium() {
+        // PDFIUM 없을 때는 PNG 렌더링 자체가 실패하지만 warning은 출력된다
+        rpdf()
+            .env_remove("PDFIUM_DYNAMIC_LIB_PATH")
+            .args(["render", &pdf("pdfjs-basicapi.pdf"), "--debug-overlay"])
+            .assert()
+            .stderr(predicates::str::contains("Warning:"));
+    } else {
+        let out = tempfile::Builder::new()
+            .suffix(".png")
+            .tempfile()
+            .expect("tempfile 생성 실패");
+        let out_path = out.path().to_string_lossy().into_owned();
+
+        rpdf()
+            .args([
+                "render",
+                &pdf("pdfjs-basicapi.pdf"),
+                "--debug-overlay",
+                "-o",
+                &out_path,
+            ])
+            .assert()
+            .stderr(predicates::str::contains("Warning:"));
+    }
+}
