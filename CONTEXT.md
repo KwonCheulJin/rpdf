@@ -1,8 +1,8 @@
 # rpdf — AI 네비게이션 컴패스
 
-PDF 파서·렌더러·편집기 (Rust + WASM + Tauri).
+PDF 파서·렌더러·편집기 (Rust + WASM + Tauri). 모듈 구조(module structure)와 entry point를 중심으로 빠르게 탐색하기 위한 문서.
 
-## 핵심 진입점
+## 핵심 진입점 (Entry Points)
 
 | 파일 | 용도 |
 |------|------|
@@ -17,6 +17,13 @@ PDF 파서·렌더러·편집기 (Rust + WASM + Tauri).
 ```bash
 cargo build --workspace
 cargo nextest run --all
+```
+
+## 품질 검증
+
+```bash
+cargo clippy -- -D warnings
+cargo fmt --check
 ```
 
 ## AI 페어 프로그래밍 성과 (개선 전/후)

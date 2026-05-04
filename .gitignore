@@ -261,3 +261,4 @@ src-tauri/target/
 samples/large/
 # pdfium 동적 라이브러리 (scripts/fetch-pdfium.sh로 로컬 설치)
 pdfium/
+ai-ready-output/
