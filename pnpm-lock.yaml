@@ -18,6 +18,8 @@ importers:
         specifier: ^5.4
         version: 5.9.3
 
+  npm/core: {}
+
 packages:
 
   '@types/node@22.19.17':

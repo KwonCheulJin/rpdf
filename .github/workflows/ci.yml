@@ -76,3 +76,37 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       # 패키지가 생기면 lint / test / typecheck 추가
+
+  wasm:
+    name: WASM (wasm-pack build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-pack@0.15.0
+
+      - name: wasm-pack build
+        run: |
+          wasm-pack build crates/rpdf-wasm --target web \
+            --out-dir ../../npm/core \
+            --out-name rpdf_core \
+            --scope rpdf
+          bash scripts/rename-wasm-package.sh
+          # rename 결과 검증 — silent failure 방지
+          grep '"name": "@rpdf/core"' npm/core/package.json || exit 1
+
+      - name: Bundle size check (gzip ≤ 2MB)
+        run: |
+          # .wasm 단독 체크 (.js 글루 코드 ~50KB 포함해도 여유 충분)
+          SIZE=$(gzip -c npm/core/rpdf_core_bg.wasm | wc -c)
+          echo "gzip 번들 크기: ${SIZE} bytes"
+          if [ "$SIZE" -gt 2097152 ]; then
+            echo "❌ 번들 크기 초과: ${SIZE} bytes (상한: 2097152)"
+            exit 1
+          fi
+          echo "✅ 번들 크기 통과: ${SIZE} bytes"
