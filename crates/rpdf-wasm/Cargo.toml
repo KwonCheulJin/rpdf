@@ -2,6 +2,9 @@
 name = "rpdf-wasm"
 version = "0.1.0"
 edition.workspace = true
+description = "WebAssembly bindings for rpdf — PDF parsing, editing, and saving in the browser"
+repository = "https://github.com/KwonCheulJin/rpdf"
+license = "MIT"
 
 [lib]
 crate-type = ["cdylib", "rlib"]
