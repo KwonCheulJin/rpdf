@@ -104,6 +104,26 @@ PDF 스펙(ISO 32000) 용어를 코드에 그대로 반영한다. Don't use tran
 
 웹 환경 렌더링은 ADR-004에 따라 pdf.js가 담당한다. Rust 코어는 파싱·편집·저장만.
 
+### wasm-pack이 `--out-dir`의 `.gitignore`를 덮어씀
+
+`wasm-pack build --out-dir <dir>`을 실행하면 wasm-pack 0.15.0이 해당 디렉터리의 `.gitignore`를
+`*` (모두 무시) 내용으로 **덮어쓴다**. 선생성한 `.gitignore`가 있어도 무시된다.
+
+```bash
+# 올바른 순서
+wasm-pack build crates/rpdf-wasm --target web --out-dir ../../npm/core ...
+# 빌드 후 .gitignore 복원
+cat > npm/core/.gitignore << 'EOF'
+*.wasm
+*.js
+*.d.ts
+snippets/
+EOF
+```
+
+CI에서는 빌드 산출물을 커밋하지 않으므로 영향 없다. 로컬 개발 시 `git status`로 산출물이
+untracked 상태로 남아 있는지 반드시 확인한다.
+
 ## 라이선스
 
 기여한 코드는 MIT 라이선스로 배포됩니다.
