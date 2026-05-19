@@ -58,6 +58,15 @@ PDF 스펙(ISO 32000) 용어를 코드에 그대로 반영한다.
 > 열린 `<g transform>` 태그를 닫지 않아 `cm → q` 패턴 PDF에서 SVG 구조 파손.
 > → `SaveState` 진입 전에 `for _ in 0..loose_cm_depth { out.push_str("</g>\n"); }` 실행.
 
+### PDF 속성 직렬화 — 항상 명시적 쓰기
+
+PDF 속성(rotation 등)을 직렬화할 때 "값이 기본값이면 생략" 조건 분기를 두지 않는다.
+항상 현재 값으로 덮어쓴다.
+
+> **사례**: `serialize_document`에서 `rotation ≠ 0`일 때만 `/Rotate`를 설정하면,
+> 원본이 `/Rotate 90`인 페이지를 0도로 복원할 때 조건 미충족 → 원본 값 90이 그대로 남는 버그.
+> → 조건 분기 없이 항상 `page.rotation` 값으로 `/Rotate`를 설정해 해결.
+
 ### 테스트 파일 배치
 
 공개 API 테스트 → `tests/parser/<module>_tests.rs` (별도 파일). 새 모듈 추가 시 `mod.rs`에 등록.
