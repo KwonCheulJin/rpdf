@@ -2,7 +2,7 @@
 resolver = "2"
 members = ["crates/rpdf-cli",
     "crates/rpdf-core", "crates/rpdf-edit", "crates/rpdf-parser", "crates/rpdf-render", "crates/rpdf-svg",
-    "crates/rpdf-serializer",
+    "crates/rpdf-serializer", "crates/rpdf-wasm",
 ]
 
 [workspace.package]
@@ -19,6 +19,9 @@ rpdf-parser = { path = "crates/rpdf-parser" }
 rpdf-render = { path = "crates/rpdf-render" }
 rpdf-serializer = { path = "crates/rpdf-serializer" }
 rpdf-svg = { path = "crates/rpdf-svg" }
+wasm-bindgen = "0.2"
+serde-wasm-bindgen = "0.6"
+js-sys = "0.3"
 lopdf = "0.40.0"
 thiserror = "2"
 anyhow = "1"

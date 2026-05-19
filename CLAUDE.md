@@ -72,6 +72,34 @@ let idx = page - 1;
 > 열린 `<g transform>` 태그를 닫지 않아 `cm → q` 패턴 PDF에서 SVG 구조 파손.
 > → `SaveState` 진입 전에 `for _ in 0..loose_cm_depth { out.push_str("</g>\n"); }` 실행.
 
+커맨드 스택과 병렬로 관리하는 보조 스택(sources 등)이 있을 때, **보조 스택은 커맨드 스택과 항상 동일 높이**를 유지해야 한다.
+보조 상태를 변경하지 않는 커맨드도 반드시 sentinel을 push한다. 그렇지 않으면 커맨드를 혼합 실행한 뒤 undo 시 잘못된 스냅샷이 복원된다.
+
+```rust
+// 잘못된 패턴 — sources 변경 커맨드만 push → 혼합 시나리오에서 탈동기화
+fn execute_cmd(&mut self, cmd: Box<dyn Command>, new_sources: Option<Vec<PageSource>>) {
+    self.stack.execute(cmd, &mut self.doc)?;
+    if let Some(s) = new_sources {          // None이면 push 생략 → 높이 불일치
+        self.sources_undo.push(self.sources.clone());
+        self.sources = s;
+    }
+}
+
+// 올바른 패턴 — 항상 push → 커맨드 스택과 높이 일치 보장
+fn execute_cmd(&mut self, cmd: Box<dyn Command>, new_sources: Option<Vec<PageSource>>) {
+    self.stack.execute(cmd, &mut self.doc)?;
+    self.sources_undo.push(self.sources.clone()); // 항상 push
+    self.sources_redo.clear();
+    if let Some(s) = new_sources {
+        self.sources = s;
+    }
+}
+```
+
+> **사례**: `rpdf-wasm`의 `PdfDocument` — `rotate_page`는 sources 불변이라 `new_sources=None`으로만 처리했더니,
+> `rotate → delete → undo → undo` 시 sources_undo가 CommandStack보다 낮아 잘못된 스냅샷 복원.
+> → execute_cmd에서 `new_sources` 여부와 무관하게 항상 `sources_undo.push` 실행해 해결.
+
 ### PDF 속성 직렬화 — 항상 명시적 쓰기
 
 PDF 속성(rotation 등)을 직렬화할 때 "값이 기본값이면 생략" 조건 분기를 두지 않는다.
