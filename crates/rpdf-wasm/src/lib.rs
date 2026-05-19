@@ -509,7 +509,8 @@ mod tests {
         assert_eq!(pdf.sources.len(), pdf.page_count());
 
         // 2단계: delete_pages (sources 1 감소)
-        pdf.delete_pages(vec![1]).expect("delete_pages should succeed");
+        pdf.delete_pages(vec![1])
+            .expect("delete_pages should succeed");
         assert_eq!(pdf.page_count(), original_count - 1);
         assert_eq!(pdf.sources.len(), pdf.page_count());
 
