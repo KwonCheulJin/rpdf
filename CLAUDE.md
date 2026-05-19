@@ -39,6 +39,20 @@ PDF 스펙(ISO 32000) 용어를 코드에 그대로 반영한다.
 > 악성 입력 `[1, 100, 2]`가 들어오면 u64 읽기 시 silent truncation으로 잘못된 엔트리 디코딩.
 > → `W[i] > 8` 조건을 명시적으로 거부하고 `XrefStreamInvalidW` 반환.
 
+**Rust 특유 함정 — `saturating_sub`**: 1-based 입력을 0-based로 변환할 때 `page.saturating_sub(1)` 을 쓰면 `page == 0`이 조용히 `0`으로 매핑된다. 0은 1-based 기준 유효하지 않으므로 반드시 `0` 여부를 먼저 검사하고 `bail!`로 거부한다.
+
+```rust
+// 잘못된 패턴 (page=0 → index=0 으로 silent pass)
+let idx = page.saturating_sub(1);
+
+// 올바른 패턴
+if page == 0 { bail!("페이지 번호는 1부터 시작합니다 (0 입력됨)"); }
+let idx = page - 1;
+```
+
+> **사례**: `rotate --page 0` 입력 시 saturating_sub 결과 index=0 → RotatePageCommand 성공, exit 0.
+> evaluator가 silent failure로 지적해 명시적 bail!로 수정.
+
 ### `Send + Sync` 트레이트 경계와 테스트 더미 내부 가변성
 
 `Box<dyn Trait>` 트레이트 객체에 `Send + Sync` 경계가 있을 때, 테스트 더미에서 `&self`를 통한 내부 가변성이 필요하면 **`Mutex<T>`를 사용**한다.
