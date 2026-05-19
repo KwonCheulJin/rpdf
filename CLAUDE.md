@@ -66,6 +66,15 @@ private/`pub(crate)` 함수 테스트 → 인라인 `#[cfg(test)] mod internal_t
 > **이유**: `tests/` 폴더는 크레이트 외부에서 컴파일되므로 `pub(crate)` 함수에 접근할 수 없다.
 > 공개 API만으로 동등한 검증이 가능하면 별도 파일을 우선한다.
 
+### 테스트 헬퍼 공유 (인라인 `#[cfg(test)]` 모듈 간)
+
+같은 크레이트 내 여러 모듈이 동일한 테스트 헬퍼를 공유해야 한다면,
+`mod.rs`에 `#[cfg(test)] pub(crate) mod test_utils {}` 를 추가하고
+각 하위 모듈에서 `use super::test_utils::헬퍼명;` 으로 임포트한다.
+세 번 이상 중복이 발생하면 즉시 통합한다.
+
+> **사례**: `rpdf-edit`의 `make_doc` 헬퍼가 rotate.rs·delete.rs·merge.rs·split.rs에 4번 중복된 채 방치됐다가 Task #22에서 통합됨.
+
 ### 체크포인트 시점 셀프 리뷰
 
 각 체크포인트(빌드·테스트 통과 직후) 다음으로 넘어가기 전, 명세 위반 시나리오를 능동적으로 탐색한다.

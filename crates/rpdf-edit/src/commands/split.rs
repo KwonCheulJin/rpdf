@@ -164,26 +164,10 @@ impl Query for SplitCommand {
 
 #[cfg(test)]
 mod tests {
-    use rpdf_core::types::document::{Document, DocumentMetadata, Page};
+    use rpdf_core::types::document::DocumentMetadata;
 
     use super::*;
-
-    fn make_doc(pages: usize, rotations: &[i32]) -> Document {
-        let page_vec = (0..pages)
-            .map(|i| Page {
-                index: i,
-                content: vec![],
-                resources: None,
-                media_box: None,
-                crop_box: None,
-                rotation: rotations.get(i).copied().unwrap_or(0),
-            })
-            .collect();
-        Document {
-            pages: page_vec,
-            metadata: None,
-        }
-    }
+    use crate::commands::test_utils::make_doc;
 
     #[test]
     fn split_single_range() {
