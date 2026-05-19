@@ -90,6 +90,7 @@ mod tests {
     /// `PDFIUM_DYNAMIC_LIB_PATH` 환경변수에 libpdfium이 있는 디렉터리 경로를 설정해야 한다.
     /// 예: `export PDFIUM_DYNAMIC_LIB_PATH=$(pwd)/pdfium/lib`
     #[test]
+    #[ignore = "requires PDFIUM_DYNAMIC_LIB_PATH — run scripts/fetch-pdfium.sh first"]
     fn pdfium_dynamic_links() {
         let lib_path = std::env::var("PDFIUM_DYNAMIC_LIB_PATH")
             .expect("PDFIUM_DYNAMIC_LIB_PATH not set — run scripts/fetch-pdfium.sh first");
