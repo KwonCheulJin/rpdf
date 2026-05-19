@@ -2,6 +2,7 @@ mod delete;
 mod error;
 mod merge;
 mod rotate;
+mod split;
 mod stack;
 mod traits;
 
@@ -9,6 +10,7 @@ pub use delete::DeletePagesCommand;
 pub use error::CommandError;
 pub use merge::MergeCommand;
 pub use rotate::RotatePageCommand;
+pub use split::SplitCommand;
 pub use stack::CommandStack;
 pub use traits::{Command, Query};
 
