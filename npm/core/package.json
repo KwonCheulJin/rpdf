@@ -1,0 +1,21 @@
+{
+  "name": "@rpdf/core",
+  "type": "module",
+  "description": "WebAssembly bindings for rpdf — PDF parsing, editing, and saving in the browser",
+  "version": "0.1.0",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/KwonCheulJin/rpdf"
+  },
+  "files": [
+    "rpdf_core_bg.wasm",
+    "rpdf_core.js",
+    "rpdf_core.d.ts"
+  ],
+  "main": "rpdf_core.js",
+  "types": "rpdf_core.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}

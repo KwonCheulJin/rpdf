@@ -156,6 +156,7 @@ private/`pub(crate)` 함수 테스트 → 인라인 `#[cfg(test)] mod internal_t
 **CI cargo 도구 설치**: `taiki-e/install-action@<tool-name>` 패턴 사용 (예: `taiki-e/install-action@cargo-nextest`).
 **insta 스냅샷 첫 도입**: 첫 실행 시 `*.snap.new` pending 파일 생성됨 → `cargo insta accept` 또는 수동 rename. CI는 `INSTA_UPDATE=no` 환경변수 필수.
 **wasm-pack build**: `wasm-pack build <크레이트-경로> --target web` — cargo의 `-p` 플래그 미지원, 디렉토리 경로를 직접 지정해야 한다 (예: `wasm-pack build crates/rpdf-wasm --target web`). `-p`를 쓰면 silently 무시되거나 오류 발생.
+  `--out-dir`을 지정하면 wasm-pack 0.15.0이 해당 디렉터리의 `.gitignore`를 `*` 내용으로 덮어쓴다. 빌드 후 반드시 `.gitignore`를 복원할 것 → `CONTRIBUTING.md` "wasm-pack이 `--out-dir`의 `.gitignore`를 덮어씀" 참조.
 
 손으로 만들 것: 워크스페이스 `Cargo.toml`, `pnpm-workspace.yaml`, CI yml, `CLAUDE.md`, `mydocs/`
 
