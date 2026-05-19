@@ -155,6 +155,7 @@ private/`pub(crate)` 함수 테스트 → 인라인 `#[cfg(test)] mod internal_t
 **외부 크레이트**: docs.rs에서 공개 API 확인 완료 후 사용. 계획서에 "공개 API 확인 완료" 명시.
 **CI cargo 도구 설치**: `taiki-e/install-action@<tool-name>` 패턴 사용 (예: `taiki-e/install-action@cargo-nextest`).
 **insta 스냅샷 첫 도입**: 첫 실행 시 `*.snap.new` pending 파일 생성됨 → `cargo insta accept` 또는 수동 rename. CI는 `INSTA_UPDATE=no` 환경변수 필수.
+**wasm-pack build**: `wasm-pack build <크레이트-경로> --target web` — cargo의 `-p` 플래그 미지원, 디렉토리 경로를 직접 지정해야 한다 (예: `wasm-pack build crates/rpdf-wasm --target web`). `-p`를 쓰면 silently 무시되거나 오류 발생.
 
 손으로 만들 것: 워크스페이스 `Cargo.toml`, `pnpm-workspace.yaml`, CI yml, `CLAUDE.md`, `mydocs/`
 

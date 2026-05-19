@@ -97,6 +97,13 @@ PDF 스펙(ISO 32000) 용어를 코드에 그대로 반영한다. Don't use tran
 - 올바름: `export PDFIUM_DYNAMIC_LIB_PATH=$(pwd)/pdfium/lib`
 - 잘못됨: `export PDFIUM_DYNAMIC_LIB_PATH=$(pwd)/pdfium/lib/libpdfium.dylib`
 
+### rpdf-wasm에 rpdf-render 의존 추가 금지
+
+`rpdf-wasm`의 `Cargo.toml`에 `rpdf-render` 의존을 추가하면 wasm-pack build가 실패한다.
+`rpdf-render`는 네이티브 PDFium 동적 라이브러리를 런타임에 로딩하므로 WASM 타겟에서 컴파일 불가.
+
+웹 환경 렌더링은 ADR-004에 따라 pdf.js가 담당한다. Rust 코어는 파싱·편집·저장만.
+
 ## 라이선스
 
 기여한 코드는 MIT 라이선스로 배포됩니다.
