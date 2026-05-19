@@ -160,6 +160,170 @@ fn it_e5_dump_out_of_range_fails() {
         .stderr(predicates::str::contains("not found"));
 }
 
+// ── IT-F: 편집 명령 통합 테스트 ───────────────────────────────────────────────
+
+use tempfile::TempDir;
+
+// IT-F1: rotate — fw4-2024.pdf의 1번 페이지를 90도 회전 → 저장 → 재파싱 → rotation == 90
+#[test]
+fn it_f1_rotate_page_roundtrip() {
+    let dir = TempDir::new().unwrap();
+    let output = dir.path().join("rotated.pdf");
+
+    rpdf()
+        .args([
+            "rotate",
+            &pdf("fw4-2024.pdf"),
+            "--page",
+            "1",
+            "--degrees",
+            "90",
+            "-o",
+            output.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    let data = std::fs::read(&output).unwrap();
+    let doc = rpdf_parser::load_document(&data).unwrap();
+    assert_eq!(doc.pages[0].rotation, 90);
+}
+
+// IT-F2: delete — fw4-2024.pdf(5페이지)에서 2번 페이지 삭제 → 재파싱 → page_count == 4
+#[test]
+fn it_f2_delete_page_roundtrip() {
+    let dir = TempDir::new().unwrap();
+    let output = dir.path().join("deleted.pdf");
+
+    rpdf()
+        .args([
+            "delete",
+            &pdf("fw4-2024.pdf"),
+            "--pages",
+            "2",
+            "-o",
+            output.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    let data = std::fs::read(&output).unwrap();
+    let doc = rpdf_parser::load_document(&data).unwrap();
+    assert_eq!(doc.pages.len(), 4);
+}
+
+// IT-F3: merge — fw4-2024.pdf(5페이지) + irs-f1040.pdf → 재파싱 → page_count == (5 + N)
+#[test]
+fn it_f3_merge_roundtrip() {
+    let dir = TempDir::new().unwrap();
+    let output = dir.path().join("merged.pdf");
+
+    let data_b = std::fs::read(pdf("irs-f1040.pdf")).unwrap();
+    let doc_b = rpdf_parser::load_document(&data_b).unwrap();
+    let b_pages = doc_b.pages.len();
+
+    rpdf()
+        .args([
+            "merge",
+            &pdf("fw4-2024.pdf"),
+            &pdf("irs-f1040.pdf"),
+            "-o",
+            output.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    let data = std::fs::read(&output).unwrap();
+    let doc = rpdf_parser::load_document(&data).unwrap();
+    assert_eq!(doc.pages.len(), 5 + b_pages);
+}
+
+// IT-F4: extract — fw4-2024.pdf에서 2-4 추출 → 재파싱 → page_count == 3
+#[test]
+fn it_f4_extract_pages_roundtrip() {
+    let dir = TempDir::new().unwrap();
+    let output = dir.path().join("extracted.pdf");
+
+    rpdf()
+        .args([
+            "extract",
+            &pdf("fw4-2024.pdf"),
+            "--pages",
+            "2-4",
+            "-o",
+            output.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    let data = std::fs::read(&output).unwrap();
+    let doc = rpdf_parser::load_document(&data).unwrap();
+    assert_eq!(doc.pages.len(), 3);
+}
+
+// IT-F5: split — fw4-2024.pdf를 "1-2,4-5"로 분리 → 출력 디렉토리에 파일 2개 생성
+#[test]
+fn it_f5_split_roundtrip() {
+    let dir = TempDir::new().unwrap();
+
+    rpdf()
+        .args([
+            "split",
+            &pdf("fw4-2024.pdf"),
+            "--pages",
+            "1-2,4-5",
+            "-o",
+            dir.path().to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    let part1 = dir.path().join("fw4-2024_part1.pdf");
+    let part2 = dir.path().join("fw4-2024_part2.pdf");
+    assert!(part1.exists(), "fw4-2024_part1.pdf 없음");
+    assert!(part2.exists(), "fw4-2024_part2.pdf 없음");
+
+    let data1 = std::fs::read(&part1).unwrap();
+    let doc1 = rpdf_parser::load_document(&data1).unwrap();
+    assert_eq!(doc1.pages.len(), 2);
+}
+
+// IT-F6: 에러 — delete --pages 0 → exit 1
+#[test]
+fn it_f6_delete_zero_page_errors() {
+    let dir = TempDir::new().unwrap();
+    let output = dir.path().join("out.pdf");
+
+    rpdf()
+        .args([
+            "delete",
+            &pdf("fw4-2024.pdf"),
+            "--pages",
+            "0",
+            "-o",
+            output.to_str().unwrap(),
+        ])
+        .assert()
+        .failure();
+}
+
+// IT-F7: 에러 — merge 입력 파일 1개 → exit 2 (clap 에러)
+#[test]
+fn it_f7_merge_requires_two_inputs() {
+    let dir = TempDir::new().unwrap();
+    let output = dir.path().join("out.pdf");
+
+    rpdf()
+        .args([
+            "merge",
+            &pdf("fw4-2024.pdf"),
+            "-o",
+            output.to_str().unwrap(),
+        ])
+        .assert()
+        .failure();
+}
+
 // ── proptest: 임의 바이트 입력 → 크래시 없음 ───────────────────────────────
 
 #[test]

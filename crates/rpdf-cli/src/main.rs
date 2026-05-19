@@ -73,6 +73,51 @@ enum Commands {
         #[arg(long = "all-pages")]
         all_pages: bool,
     },
+    /// 여러 PDF를 하나로 합친다.
+    Merge {
+        #[arg(value_name = "PDF", required = true, num_args = 2..)]
+        inputs: Vec<PathBuf>,
+        #[arg(short = 'o', long = "output", value_name = "PATH", required = true)]
+        output: PathBuf,
+    },
+    /// 페이지 범위별로 PDF를 여러 파일로 분리한다.
+    Split {
+        #[arg(value_name = "PDF")]
+        input: PathBuf,
+        #[arg(long = "pages", value_name = "SPEC")]
+        pages: String,
+        #[arg(short = 'o', long = "output", value_name = "DIR", required = true)]
+        output: PathBuf,
+    },
+    /// 페이지를 회전시킨다.
+    Rotate {
+        #[arg(value_name = "PDF")]
+        input: PathBuf,
+        #[arg(long = "page", value_name = "N")]
+        page: usize,
+        #[arg(long = "degrees", value_name = "DEG")]
+        degrees: i32,
+        #[arg(short = 'o', long = "output", value_name = "PATH", required = true)]
+        output: PathBuf,
+    },
+    /// 지정한 페이지를 삭제한다.
+    Delete {
+        #[arg(value_name = "PDF")]
+        input: PathBuf,
+        #[arg(long = "pages", value_name = "PAGES")]
+        pages: String,
+        #[arg(short = 'o', long = "output", value_name = "PATH", required = true)]
+        output: PathBuf,
+    },
+    /// 지정 범위 페이지를 새 PDF로 추출한다.
+    Extract {
+        #[arg(value_name = "PDF")]
+        input: PathBuf,
+        #[arg(long = "pages", value_name = "RANGE")]
+        pages: String,
+        #[arg(short = 'o', long = "output", value_name = "PATH", required = true)]
+        output: PathBuf,
+    },
 }
 
 fn main() -> ExitCode {
@@ -117,6 +162,28 @@ fn run(cli: Cli) -> Result<()> {
             debug_overlay,
             all_pages,
         }),
+        Commands::Merge { inputs, output } => commands::edit::merge::run(inputs, output),
+        Commands::Split {
+            input,
+            pages,
+            output,
+        } => commands::edit::split::run(input, pages, output),
+        Commands::Rotate {
+            input,
+            page,
+            degrees,
+            output,
+        } => commands::edit::rotate::run(input, page, degrees, output),
+        Commands::Delete {
+            input,
+            pages,
+            output,
+        } => commands::edit::delete::run(input, pages, output),
+        Commands::Extract {
+            input,
+            pages,
+            output,
+        } => commands::edit::extract::run(input, pages, output),
     }
 }
 
