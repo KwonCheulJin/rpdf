@@ -1,0 +1,16 @@
+[package]
+name = "rpdf-serializer"
+version = "0.1.0"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+rpdf-core.workspace = true
+rpdf-parser.workspace = true
+lopdf.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+rpdf-edit.workspace = true
