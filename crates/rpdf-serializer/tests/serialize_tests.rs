@@ -258,7 +258,7 @@ fn serialize_after_merge() {
 
     // sources 동기화: a_sources + b_sources 순서로 연결
     let merged_sources: Vec<PageSource> =
-        sources_a.into_iter().chain(sources_b.into_iter()).collect();
+        sources_a.into_iter().chain(sources_b).collect();
     assert_eq!(merged_sources.len(), 5);
 
     let out = serialize_document(&doc_a, &merged_sources).unwrap();
