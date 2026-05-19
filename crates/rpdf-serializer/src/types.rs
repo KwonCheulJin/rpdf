@@ -11,6 +11,7 @@ use std::sync::Arc;
 /// - `ExtractPagesCommand(1-5)`: `sources[0..=4]` — 범위 슬라이스
 /// - `SplitCommand`: 각 결과 doc의 page 원본 인덱스로 sources 슬라이스
 /// - `MergeCommand`: `a_sources + b_sources + ...` 순서로 연결
+#[derive(Clone)]
 pub struct PageSource {
     /// 원본 PDF 바이트. 동일한 파일에서 로드된 여러 PageSource는 같은 Arc를 공유한다.
     pub bytes: Arc<Vec<u8>>,

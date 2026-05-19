@@ -1,0 +1,19 @@
+[package]
+name = "rpdf-wasm"
+version = "0.1.0"
+edition.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+rpdf-core.workspace = true
+rpdf-parser.workspace = true
+rpdf-edit.workspace = true
+rpdf-serializer.workspace = true
+wasm-bindgen = { workspace = true }
+serde-wasm-bindgen = { workspace = true }
+serde = { workspace = true }
+js-sys = { workspace = true }
+# getrandom의 wasm_js feature: wasm32-unknown-unknown 타겟에서 lopdf → rand → getrandom 의존성 때문에 필요
+getrandom = { version = "0.4", features = ["wasm_js"] }
